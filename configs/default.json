@@ -1,0 +1,75 @@
+{
+  "preprocess": {
+    "downsample_num": 100,
+    "normal_estimation_radius": 0.01
+  },
+  "weights": {
+    "geo_score": {
+      "w_fin": 1.0,
+      "w_knf": 4.4,
+      "w_tbl": 6.0
+    },
+    "pos_score": {
+      "w_pdir": 5.0,
+      "w_pdis": 4.0
+    },
+    "force_score": {
+      "w_mag": 2.0,
+      "w_dir": 2.0,
+      "w_var": 1.0
+    }
+  },
+  "knife": {
+    "edge_angle_deg": 30.0,
+    "height": 0.05
+  },
+  "physics": {
+    "friction_coef": 0.5,
+    "fracture_toughness": 400.0,
+    "pressure_distribution": 3000.0,
+    "planar_constraint": true,
+    "friction_cone": {
+      "angle_deg": 40.0,
+      "num_sides": 8
+    },
+    "force_balance_threshold": 0.0001
+  },
+  "search": {
+    "geo_filter_ratio": 0.6,
+    "force_sample_count": 1000
+  },
+  "instrumentation": {
+    "enable_timing": true,
+    "enable_detailed_timing": true,
+    "emit_per_timestep_report": false,
+    "emit_per_candidate_debug": false,
+    "timing_output": {
+      "format": "jsonl",
+      "path": "logs/timing.jsonl"
+    },
+    "sections": {
+      "python": {
+        "io": true,
+        "preprocess": true,
+        "trajectory_loop": true,
+        "valid_indices": true,
+        "mesh_boolean": true,
+        "contact_surface_purify": true,
+        "accumulate_scores": true
+      },
+      "cpp": {
+        "kdtree": true,
+        "geo_filter": true,
+        "pos_score": true,
+        "knife_wrench": true,
+        "dyn_score_total": true,
+        "force_generate": true,
+        "force_check": true,
+        "grasp_matrix": true,
+        "pinv": true,
+        "normalize": true
+      }
+    }
+  },
+  "seed": 42
+}
