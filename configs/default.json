@@ -30,6 +30,7 @@
     "edge_angle_deg": 5.0,
     "height": 0.1,
     "length": 0.2,
+    "cross_section_length": 0.2,
     "length_margin": 0.05
   },
   "physics": {

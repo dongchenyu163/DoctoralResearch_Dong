@@ -100,7 +100,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "pos_score": {"w_pdir": 5.0, "w_pdis": 4.0},
         "force_score": {"w_mag": 2.0, "w_dir": 2.0, "w_var": 1.0},
     },
-    "knife": {"edge_angle_deg": 30.0, "height": 0.05, "length": 0.2, "length_margin": 0.05},
+    "knife": {"edge_angle_deg": 30.0, "height": 0.05, "length": 0.2, "length_margin": 0.05, "cross_section_length": 0.2},
     "physics": {
         "friction_coef": 0.5,
         "fracture_toughness": 400.0,
