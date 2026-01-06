@@ -33,11 +33,11 @@
 
 ## **📊 开发进度追踪看板 (Progress Tracker)**
 
-### **🔴 Phase 0: 工程骨架 (Skeleton)**
+### **🟢 Phase 0: 工程骨架 (Skeleton)**
 
-* [ ] **P0-1**: 建立 repo 目录结构与最小可运行入口 (python/main.py)  
-* [ ] **P0-2**: 实现 Instrumentation (计时/日志) 框架  
-* [ ] **P0-3**: 实现随机种子控制模块，确保可复现性
+* [x] **P0-1**: 建立 repo 目录结构与最小可运行入口 (python/main.py)  
+* [x] **P0-2**: 实现 Instrumentation (计时/日志) 框架  
+* [x] **P0-3**: 实现随机种子控制模块，确保可复现性
 
 ### **🔴 Phase 1: Python 数据预处理 (Preprocessing)**
 
