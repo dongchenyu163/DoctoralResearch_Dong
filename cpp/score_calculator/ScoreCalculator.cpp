@@ -371,6 +371,9 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     double balance = 1.0 / (1.0 + residual);
     Eigen::Index contact_count = indices.size();
     int feasible_contacts = 0;
+    std::vector<double> magnitudes;
+    magnitudes.reserve(static_cast<std::size_t>(contact_count));
+    Eigen::Vector3d net_force = Eigen::Vector3d::Zero();
     for (Eigen::Index j = 0; j < contact_count; ++j) {
       const auto& p = cloud_->points[static_cast<std::size_t>(indices(j))];
       Eigen::Vector3d normal(static_cast<double>(p.normal_x), static_cast<double>(p.normal_y), static_cast<double>(p.normal_z));
@@ -380,6 +383,8 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
         normal.normalize();
       }
       Eigen::Vector3d contact_force = f.segment(3 * j, 3);
+      net_force += contact_force;
+      magnitudes.push_back(contact_force.norm());
       double normal_component = contact_force.dot(normal);
       Eigen::Vector3d tangential_vec = contact_force - normal_component * normal;
       double tangential = tangential_vec.norm();
@@ -389,7 +394,27 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
       }
     }
     double feasibility = contact_count > 0 ? static_cast<double>(feasible_contacts) / static_cast<double>(contact_count) : 0.0;
-    scores(i) = std::clamp(0.5 * (feasibility + balance), 0.0, 1.0);
+    double wrench_force = wrench.head(3).norm();
+    double net_force_norm = net_force.norm();
+    double e_mag = 1.0 / (1.0 + std::abs(net_force_norm - wrench_force));
+    double e_dir = 0.0;
+    if (net_force_norm > 1e-9 && wrench_force > 1e-9) {
+      e_dir = std::max(0.0, net_force.normalized().dot((-wrench.head(3)).normalized()));
+    }
+    double e_var = 0.0;
+    if (magnitudes.size() > 1) {
+      double mean = std::accumulate(magnitudes.begin(), magnitudes.end(), 0.0) / magnitudes.size();
+      double var = 0.0;
+      for (double m : magnitudes) {
+        var += (m - mean) * (m - mean);
+      }
+      var /= magnitudes.size();
+      e_var = 1.0 / (1.0 + std::sqrt(var));
+    } else if (!magnitudes.empty()) {
+      e_var = 1.0;
+    }
+    double combined = (feasibility + balance + e_mag + e_dir + e_var) / 5.0;
+    scores(i) = std::clamp(combined, 0.0, 1.0);
   }
   return scores;
 }
