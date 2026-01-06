@@ -7,3 +7,4 @@ output/
 .build/
 build/
 .history
+debug_pc_calc_data
