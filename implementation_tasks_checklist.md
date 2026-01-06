@@ -48,7 +48,7 @@
 ### **🔴 Phase 2: 几何筛选 (C++ GeoFilter)**
 
 * [x] **C-1**: 搭建 CMake 构建系统 (Eigen3, OpenMP, pybind11)  
-* [ ] **P2-1**: C++ ScoreCalculator 类骨架 & Numpy-Eigen 数据绑定  
+* [x] **P2-1**: C++ ScoreCalculator 类骨架 & Numpy-Eigen 数据绑定  
 * [ ] **P2-2**: 实现几何评分 ($E_{fin}, E_{knf}, E_{tbl}$) & Top-K 筛选逻辑
 
 ### **🔴 Phase 3: 位置评分 (C++ PosScore)**
