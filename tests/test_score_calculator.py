@@ -72,6 +72,24 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
         self.assertEqual(scores.shape[0], 2)
         self.assertTrue(np.all(scores >= 0.0))
 
+    def test_calc_dynamics_scores_returns_values(self) -> None:
+        calc = score_calculator.ScoreCalculator()
+        points = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [0.1, 0.0, 0.0],
+                [0.0, 0.1, 0.0],
+            ],
+            dtype=np.float64,
+        )
+        normals = np.tile(np.array([[0.0, 1.0, 0.0]]), (3, 1))
+        calc.set_point_cloud(points, normals)
+        candidates = np.array([[0, 1], [1, 2]], dtype=np.int32)
+        wrench = np.ones(6, dtype=np.float64)
+        scores = calc.calc_dynamics_scores(candidates, wrench, 0.5, 40.0)
+        self.assertEqual(scores.shape[0], 2)
+        self.assertTrue(np.all(scores >= 0.0))
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

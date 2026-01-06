@@ -122,23 +122,21 @@ Eigen::Vector3d ScoreCalculator::computeCentroid(const PointCloud& subset) const
   return centroid;
 }
 
-Eigen::MatrixXd ScoreCalculator::buildGraspMatrix(const Eigen::Ref<const CandidateMatrix>& candidate_indices) const {
-  const Eigen::Index rows = candidate_indices.rows();
-  const Eigen::Index cols = candidate_indices.cols();
-  Eigen::MatrixXd G(3 * rows, 3 * cols);
+Eigen::MatrixXd ScoreCalculator::buildGraspMatrix(const Eigen::VectorXi& indices) const {
+  const Eigen::Index contacts = indices.size();
+  Eigen::MatrixXd G(6, 3 * contacts);
   G.setZero();
-  for (Eigen::Index i = 0; i < rows; ++i) {
-    for (Eigen::Index j = 0; j < cols; ++j) {
-      const int idx = candidate_indices(i, j);
-      if (idx < 0 || idx >= static_cast<int>(cloud_->size())) {
-        continue;
-      }
-      const auto& p = cloud_->points[static_cast<std::size_t>(idx)];
-      Eigen::Vector3d point(static_cast<double>(p.x), static_cast<double>(p.y), static_cast<double>(p.z));
-      Eigen::Matrix3d skew;
-      skew << 0, -point.z(), point.y(), point.z(), 0, -point.x(), -point.y(), point.x(), 0;
-      G.block<3, 3>(3 * i, 3 * j) = Eigen::Matrix3d::Identity();
+  for (Eigen::Index j = 0; j < contacts; ++j) {
+    const int idx = indices(j);
+    if (idx < 0 || idx >= static_cast<int>(cloud_->size())) {
+      continue;
     }
+    const auto& p = cloud_->points[static_cast<std::size_t>(idx)];
+    Eigen::Vector3d point(static_cast<double>(p.x), static_cast<double>(p.y), static_cast<double>(p.z));
+    Eigen::Matrix3d skew;
+    skew << 0, -point.z(), point.y(), point.z(), 0, -point.x(), -point.y(), point.x(), 0;
+    G.block<3, 3>(0, 3 * j) = Eigen::Matrix3d::Identity();
+    G.block<3, 3>(3, 3 * j) = skew;
   }
   return G;
 }
@@ -349,22 +347,49 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
   if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
     return Eigen::VectorXd(0);
   }
-  const Eigen::MatrixXd G = buildGraspMatrix(candidate_indices);
-  const Eigen::Index blocks = candidate_indices.rows();
-  Eigen::VectorXd scores(blocks);
+  const Eigen::Index rows = candidate_indices.rows();
+  Eigen::VectorXd scores(rows);
   double friction_angle_rad = friction_angle_deg * M_PI / 180.0;
-  double friction_limit = std::tan(friction_angle_rad);
-  for (Eigen::Index i = 0; i < blocks; ++i) {
-    Eigen::VectorXd local_wrench = wrench;
-    Eigen::VectorXd normal = Eigen::VectorXd::Zero(3);
-    normal[1] = 1.0;
-    double normal_mag = normal.norm();
-    double score = 0.0;
-    if (normal_mag > 0.0) {
-      double tangential = friction_coef * normal_mag;
-      score = std::clamp(tangential / (friction_limit + 1e-9), 0.0, 1.0);
+  double tan_angle = std::tan(friction_angle_rad);
+  for (Eigen::Index i = 0; i < rows; ++i) {
+    Eigen::VectorXi indices = candidate_indices.row(i);
+    bool valid = true;
+    for (Eigen::Index j = 0; j < indices.size(); ++j) {
+      if (indices(j) < 0 || indices(j) >= static_cast<int>(cloud_->size())) {
+        valid = false;
+        break;
+      }
     }
-    scores(i) = score;
+    if (!valid) {
+      scores(i) = 0.0;
+      continue;
+    }
+    Eigen::MatrixXd G = buildGraspMatrix(indices);
+    Eigen::VectorXd f = G.completeOrthogonalDecomposition().solve(-wrench);
+    Eigen::VectorXd residual_vec = G * f + wrench;
+    double residual = residual_vec.norm();
+    double balance = 1.0 / (1.0 + residual);
+    Eigen::Index contact_count = indices.size();
+    int feasible_contacts = 0;
+    for (Eigen::Index j = 0; j < contact_count; ++j) {
+      const auto& p = cloud_->points[static_cast<std::size_t>(indices(j))];
+      Eigen::Vector3d normal(static_cast<double>(p.normal_x), static_cast<double>(p.normal_y), static_cast<double>(p.normal_z));
+      if (normal.norm() < 1e-6) {
+        normal = Eigen::Vector3d(0.0, 1.0, 0.0);
+      } else {
+        normal.normalize();
+      }
+      Eigen::Vector3d contact_force = f.segment(3 * j, 3);
+      double normal_component = contact_force.dot(normal);
+      Eigen::Vector3d tangential_vec = contact_force - normal_component * normal;
+      double tangential = tangential_vec.norm();
+      double limit = friction_coef * std::max(normal_component, 0.0) * tan_angle;
+      if (normal_component > 0.0 && tangential <= limit + 1e-9) {
+        ++feasible_contacts;
+      }
+    }
+    double feasibility = contact_count > 0 ? static_cast<double>(feasible_contacts) / static_cast<double>(contact_count) : 0.0;
+    scores(i) = std::clamp(0.5 * (feasibility + balance), 0.0, 1.0);
   }
   return scores;
 }

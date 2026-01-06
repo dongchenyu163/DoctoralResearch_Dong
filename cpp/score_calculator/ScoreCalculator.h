@@ -8,6 +8,7 @@
 
 #include <Eigen/Core>
 #include <Eigen/Eigenvalues>
+#include <Eigen/SVD>
 #include <pcl/common/common.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/point_cloud.h>
@@ -68,7 +69,7 @@ class ScoreCalculator {
 
   double computeMinPairwiseDistance(const PointCloud& subset) const;
   Eigen::Vector3d computeCentroid(const PointCloud& subset) const;
-  Eigen::MatrixXd buildGraspMatrix(const Eigen::Ref<const CandidateMatrix>& candidate_indices) const;
+  Eigen::MatrixXd buildGraspMatrix(const Eigen::VectorXi& indices) const;
 
   PointCloudPtr cloud_;
   pcl::KdTreeFLANN<PointT> kd_tree_;
