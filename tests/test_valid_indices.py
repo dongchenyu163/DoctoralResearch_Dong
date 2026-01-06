@@ -16,7 +16,7 @@ def _dummy_knife() -> KnifeInstance:
     mesh = trimesh.creation.box(extents=(0.1, 0.02, 0.02))
     center = PlaneInstance(point=np.zeros(3, dtype=np.float64), normal=np.array([0.0, 1.0, 0.0], dtype=np.float64))
     positive = PlaneInstance(point=np.array([0.0, 0.01, 0.0], dtype=np.float64), normal=np.array([0.0, 1.0, 0.0], dtype=np.float64))
-    negative = PlaneInstance(point=np.array([0.0, -0.01, 0.0], dtype=np.float64), normal=np.array([0.0, -1.0, 0.0], dtype=np.float64))
+    negative = PlaneInstance(point=np.array([0.0, -0.01, 0.0], dtype=np.float64), normal=np.array([0.0, 1.0, 0.0], dtype=np.float64))
     return KnifeInstance(mesh=mesh, center_plane=center, positive_plane=positive, negative_plane=negative)
 
 
