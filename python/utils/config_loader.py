@@ -93,7 +93,23 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "synthetic_point_count": 512,
         "downsample_num": 100,
         "normal_estimation_radius": 0.01,
-        "mesh": {"enabled": True, "mls_radius": 0.01, "alpha": 0.02},
+        "mesh": {
+            "enabled": True,
+            "method": "greedy",
+            "greedy": {
+                "normal_radius": 0.01,
+                "normal_max_nn": 60,
+                "gpt_params": {
+                    "search_radius": 0.025,
+                    "mu": 2.5,
+                    "max_nearest_neighbors": 100,
+                    "max_surface_angle": 45.0,
+                    "min_angle": 10.0,
+                    "max_angle": 120.0,
+                    "normal_consistency": False,
+                },
+            },
+        },
     },
     "weights": {
         "geo_score": {"w_fin": 1.0, "w_knf": 4.4, "w_tbl": 6.0},

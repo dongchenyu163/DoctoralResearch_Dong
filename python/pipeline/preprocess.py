@@ -244,19 +244,27 @@ def _estimate_normals(points: np.ndarray, search_radius: float, max_nn: int = 30
 
 
 def _build_food_mesh(points: np.ndarray, config: Config) -> Optional["trimesh.Trimesh"]:
-    """Generate dense food mesh using greedy projection triangulation (py_gpt)."""
+    """Generate dense food mesh using configured reconstruction method."""
+    mesh_cfg = config.preprocess.get("mesh", {})
+    if not bool(mesh_cfg.get("enabled", True)):
+        return None
+    method = mesh_cfg.get("method", "greedy").lower()
+    if method == "greedy":
+        return _build_mesh_greedy(points, mesh_cfg.get("greedy", {}), config)
+    LOGGER.error("Unknown mesh reconstruction method '%s'", method)
+    return None
+
+
+def _build_mesh_greedy(points: np.ndarray, method_cfg: Dict[str, object], config: Config) -> Optional["trimesh.Trimesh"]:
     if points.size < 3:
         LOGGER.error("Ω_high cloud too small for mesh reconstruction")
         return None
     if o3d is None or trimesh is None:
         LOGGER.error("Cannot build food mesh (open3d or trimesh missing)")
         return None
-    mesh_cfg = config.preprocess.get("mesh", {})
-    if not bool(mesh_cfg.get("enabled", True)):
-        return None
     cloud = _to_point_cloud(points)
-    normal_radius = float(mesh_cfg.get("normal_radius", config.preprocess.get("normal_estimation_radius", 0.01)))
-    normal_max_nn = int(mesh_cfg.get("normal_max_nn", 60))
+    normal_radius = float(method_cfg.get("normal_radius", config.preprocess.get("normal_estimation_radius", 0.01)))
+    normal_max_nn = int(method_cfg.get("normal_max_nn", 60))
     cloud.estimate_normals(
         search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=max(normal_radius, 1e-4), max_nn=max(3, normal_max_nn))
     )
@@ -267,8 +275,8 @@ def _build_food_mesh(points: np.ndarray, config: Config) -> Optional["trimesh.Tr
     pts = np.asarray(cloud.points, dtype=np.float64)
     pts_normals = np.hstack([pts, normals])
     params = py_gpt.GPTParams()
-    overrides = mesh_cfg.get("gpt_params", {})
-    for key, value in overrides.items():
+    overrides = method_cfg.get("gpt_params", {})
+    for key, value in (overrides or {}).items():
         if hasattr(params, key):
             setattr(params, key, value)
     try:
@@ -280,5 +288,11 @@ def _build_food_mesh(points: np.ndarray, config: Config) -> Optional["trimesh.Tr
         LOGGER.error("py_gpt returned empty face set; skip food mesh build")
         return None
     mesh = trimesh.Trimesh(vertices=pts, faces=np.asarray(faces, dtype=np.int64), process=False)
-    LOGGER.info("Food mesh built via greedy triangulation: vertices=%d faces=%d", mesh.vertices.shape[0], mesh.faces.shape[0])
+    LOGGER.info(
+        "Food mesh (greedy) built via py_gpt: vertices=%d faces=%d radius=%.4f max_nn=%d",
+        mesh.vertices.shape[0],
+        mesh.faces.shape[0],
+        normal_radius,
+        normal_max_nn,
+    )
     return mesh

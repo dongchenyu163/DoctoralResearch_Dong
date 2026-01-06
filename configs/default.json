@@ -6,8 +6,20 @@
     "normal_estimation_radius": 0.01,
     "mesh": {
       "enabled": true,
-      "mls_radius": 0.01,
-      "alpha": 0.02
+      "method": "greedy",
+      "greedy": {
+        "normal_radius": 0.01,
+        "normal_max_nn": 60,
+        "gpt_params": {
+          "search_radius": 0.025,
+          "mu": 2.5,
+          "max_nearest_neighbors": 100,
+          "max_surface_angle": 45.0,
+          "min_angle": 10.0,
+          "max_angle": 120.0,
+          "normal_consistency": false
+        }
+      }
     }
   },
   "weights": {
@@ -29,8 +41,8 @@
   "knife": {
     "edge_angle_deg": 5.0,
     "height": 0.1,
-    "length": 0.2,
-    "cross_section_length": 0.2,
+    "length": 0.4,
+    "cross_section_length": 0.4,
     "length_margin": 0.05
   },
   "physics": {
