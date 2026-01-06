@@ -9,8 +9,22 @@ void ScoreCalculator::setPointCloud(const Eigen::Ref<const PointMatrix>& points,
   if (points.rows() != normals.rows()) {
     throw std::invalid_argument("points and normals must have the same row count");
   }
-  points_ = points;
-  normals_ = normals;
+  cloud_.reset(new PointCloud());
+  cloud_->reserve(points.rows());
+  for (Eigen::Index i = 0; i < points.rows(); ++i) {
+    PointT p;
+    p.x = static_cast<float>(points(i, 0));
+    p.y = static_cast<float>(points(i, 1));
+    p.z = static_cast<float>(points(i, 2));
+    p.normal_x = static_cast<float>(normals(i, 0));
+    p.normal_y = static_cast<float>(normals(i, 1));
+    p.normal_z = static_cast<float>(normals(i, 2));
+    cloud_->push_back(p);
+  }
+  cloud_->width = static_cast<uint32_t>(cloud_->size());
+  cloud_->height = 1;
+  cloud_->is_dense = true;
+  kd_tree_.setInputCloud(cloud_);
 }
 
 void ScoreCalculator::setGeoWeights(double w_fin, double w_knf, double w_tbl) noexcept {
@@ -70,36 +84,79 @@ double minTableDistance(const Eigen::Matrix<double, Eigen::Dynamic, 3>& pts, dou
 
 }  // namespace
 
+double ScoreCalculator::computeMinPairwiseDistance(const PointCloud& subset) const {
+  if (subset.size() < 2) {
+    return 0.0;
+  }
+  pcl::KdTreeFLANN<PointT> local_tree;
+  auto subset_ptr = subset.makeShared();
+  local_tree.setInputCloud(subset_ptr);
+  double min_dist = std::numeric_limits<double>::max();
+  std::vector<int> nn_indices(2);
+  std::vector<float> nn_dists(2);
+  for (std::size_t i = 0; i < subset.size(); ++i) {
+    if (local_tree.nearestKSearch(subset_ptr->points[i], 2, nn_indices, nn_dists) >= 2) {
+      const double dist = std::sqrt(static_cast<double>(nn_dists[1]));
+      if (dist < min_dist) {
+        min_dist = dist;
+      }
+    }
+  }
+  if (!std::isfinite(min_dist) || min_dist == std::numeric_limits<double>::max()) {
+    return 0.0;
+  }
+  return min_dist;
+}
+
 ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
     const Eigen::Ref<const CandidateMatrix>& candidate_indices,
     const Eigen::Vector3d& knife_p,
     const Eigen::Vector3d& knife_n,
     double table_z) const {
-  if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || points_.rows() == 0) {
+  if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
     return CandidateMatrix(0, candidate_indices.cols());
   }
 
   std::vector<RowScore> row_scores;
   row_scores.reserve(static_cast<std::size_t>(candidate_indices.rows()));
 
-  Eigen::Matrix<double, Eigen::Dynamic, 3> buffer(candidate_indices.cols(), 3);
+  PointCloud subset;
+  subset.reserve(static_cast<std::size_t>(candidate_indices.cols()));
 
   for (Eigen::Index row = 0; row < candidate_indices.rows(); ++row) {
     bool row_valid = true;
+    subset.clear();
     for (Eigen::Index col = 0; col < candidate_indices.cols(); ++col) {
       const int idx = candidate_indices(row, col);
-      if (idx < 0 || idx >= points_.rows()) {
+      if (idx < 0 || idx >= static_cast<int>(cloud_->size())) {
         row_valid = false;
         break;
       }
-      buffer.row(col) = points_.row(idx);
+      subset.push_back(cloud_->points[static_cast<std::size_t>(idx)]);
     }
     if (!row_valid) {
       continue;
     }
-    const double e_fin = minPairwiseDistance(buffer);
-    const double e_knf = distanceToPlane(buffer.colwise().mean(), knife_p, knife_n);
-    const double e_tbl = minTableDistance(buffer, table_z);
+    subset.width = static_cast<uint32_t>(subset.size());
+    subset.height = 1;
+    subset.is_dense = true;
+    Eigen::Vector3d centroid = Eigen::Vector3d::Zero();
+    for (const auto& point : subset) {
+      centroid.x() += point.x;
+      centroid.y() += point.y;
+      centroid.z() += point.z;
+    }
+    centroid /= static_cast<double>(subset.size());
+    const double e_fin = computeMinPairwiseDistance(subset);
+    const double e_knf = distanceToPlane(centroid, knife_p, knife_n);
+    double min_table = std::numeric_limits<double>::max();
+    for (const auto& point : subset) {
+      const double dist = static_cast<double>(point.z) - table_z;
+      if (dist < min_table) {
+        min_table = dist;
+      }
+    }
+    const double e_tbl = std::max(min_table, 0.0);
     row_scores.push_back({row, e_fin, e_knf, e_tbl});
   }
 

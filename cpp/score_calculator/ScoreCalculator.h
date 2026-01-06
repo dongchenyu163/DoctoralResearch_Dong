@@ -3,14 +3,21 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <vector>
 
 #include <Eigen/Core>
+#include <pcl/kdtree/kdtree_flann.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
 
 class ScoreCalculator {
  public:
   using PointMatrix = Eigen::Matrix<double, Eigen::Dynamic, 3, Eigen::RowMajor>;
   using CandidateMatrix = Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+  using PointT = pcl::PointXYZRGBNormal;
+  using PointCloud = pcl::PointCloud<PointT>;
+  using PointCloudPtr = PointCloud::Ptr;
 
   struct GeoWeights {
     double w_fin = 1.0;
@@ -32,10 +39,9 @@ class ScoreCalculator {
                                    const Eigen::Vector3d& knife_n,
                                    double table_z) const;
 
-  std::int64_t pointCount() const noexcept { return static_cast<std::int64_t>(points_.rows()); }
-
-  const PointMatrix& points() const noexcept { return points_; }
-  const PointMatrix& normals() const noexcept { return normals_; }
+  std::int64_t pointCount() const noexcept {
+    return cloud_ ? static_cast<std::int64_t>(cloud_->size()) : 0;
+  }
 
  private:
   struct RowScore {
@@ -45,8 +51,10 @@ class ScoreCalculator {
     double e_tbl;
   };
 
-  PointMatrix points_;
-  PointMatrix normals_;
+  double computeMinPairwiseDistance(const PointCloud& subset) const;
+
+  PointCloudPtr cloud_;
+  pcl::KdTreeFLANN<PointT> kd_tree_;
   std::int64_t max_candidates_ = 0;
   double geo_ratio_ = 1.0;
   GeoWeights geo_weights_;

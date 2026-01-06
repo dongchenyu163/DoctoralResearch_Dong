@@ -22,7 +22,6 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
         normals = np.ones((4, 3), dtype=np.float64)
         calc.set_point_cloud(points, normals)
         self.assertEqual(calc.point_count, 4)
-        np.testing.assert_array_equal(np.array(calc.points), points)
 
     def test_filter_by_geo_score_respects_max_candidates(self) -> None:
         calc = score_calculator.ScoreCalculator()
