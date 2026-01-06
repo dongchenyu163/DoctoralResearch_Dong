@@ -67,6 +67,17 @@ class GeoFilterRunner:
         scores = self.calculator.calc_positional_scores(candidate_matrix, knife_position, knife_normal)
         return np.asarray(scores, dtype=np.float64)
 
+    def calc_positional_distances(
+        self,
+        candidate_matrix: np.ndarray,
+        knife_position: np.ndarray,
+        knife_normal: np.ndarray,
+    ) -> np.ndarray:
+        if candidate_matrix.size == 0:
+            return np.zeros((0,), dtype=np.float64)
+        scores = self.calculator.calc_positional_distances(candidate_matrix, knife_position, knife_normal)
+        return np.asarray(scores, dtype=np.float64)
+
 
 def _mask_candidates(candidate_matrix: np.ndarray, valid_indices: np.ndarray) -> np.ndarray:
     if candidate_matrix.ndim != 2:

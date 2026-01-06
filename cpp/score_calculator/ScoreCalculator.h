@@ -44,6 +44,10 @@ class ScoreCalculator {
                                        const Eigen::Vector3d& knife_p,
                                        const Eigen::Vector3d& knife_n) const;
 
+  Eigen::VectorXd calcPositionalDistances(const Eigen::Ref<const CandidateMatrix>& candidate_indices,
+                                          const Eigen::Vector3d& knife_p,
+                                          const Eigen::Vector3d& knife_n) const;
+
   std::int64_t pointCount() const noexcept {
     return cloud_ ? static_cast<std::int64_t>(cloud_->size()) : 0;
   }

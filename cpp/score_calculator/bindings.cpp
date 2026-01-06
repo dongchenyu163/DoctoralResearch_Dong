@@ -26,5 +26,11 @@ PYBIND11_MODULE(score_calculator, m) {
           py::arg("candidate_indices"),
           py::arg("knife_position"),
           py::arg("knife_normal"))
+      .def(
+          "calc_positional_distances",
+          &ScoreCalculator::calcPositionalDistances,
+          py::arg("candidate_indices"),
+          py::arg("knife_position"),
+          py::arg("knife_normal"))
       .def_property_readonly("point_count", &ScoreCalculator::pointCount);
 }

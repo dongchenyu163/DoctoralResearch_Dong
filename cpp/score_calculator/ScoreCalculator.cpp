@@ -276,3 +276,46 @@ Eigen::VectorXd ScoreCalculator::calcPositionalScores(
   }
   return scores;
 }
+
+Eigen::VectorXd ScoreCalculator::calcPositionalDistances(
+    const Eigen::Ref<const CandidateMatrix>& candidate_indices,
+    const Eigen::Vector3d& knife_p,
+    const Eigen::Vector3d& knife_n) const {
+  if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
+    return Eigen::VectorXd(0);
+  }
+  Eigen::VectorXd scores(candidate_indices.rows());
+  PointCloud subset;
+  subset.reserve(static_cast<std::size_t>(candidate_indices.cols()));
+  Eigen::Vector3d normalized_kn = knife_n.normalized();
+  if (!std::isfinite(normalized_kn.norm()) || normalized_kn.norm() < 1e-6) {
+    normalized_kn = Eigen::Vector3d(0.0, 0.0, 1.0);
+  }
+  for (Eigen::Index row = 0; row < candidate_indices.rows(); ++row) {
+    subset.clear();
+    bool row_valid = true;
+    for (Eigen::Index col = 0; col < candidate_indices.cols(); ++col) {
+        const int idx = candidate_indices(row, col);
+        if (idx < 0 || idx >= static_cast<int>(cloud_->size())) {
+            row_valid = false;
+            break;
+        }
+        subset.push_back(cloud_->points[static_cast<std::size_t>(idx)]);
+    }
+    double score = 0.0;
+    if (row_valid && subset.size() >= 1) {
+        Eigen::Vector3d centroid = computeCentroid(subset);
+        score = distanceToPlane(centroid, knife_p, normalized_kn);
+    }
+    scores(row) = score;
+  }
+  const double min_v = scores.minCoeff();
+  const double max_v = scores.maxCoeff();
+  const double range = max_v - min_v;
+  if (std::isfinite(range) && range >= 1e-9) {
+    scores = (scores.array() - min_v) / range;
+  } else {
+    scores.setZero();
+  }
+  return scores;
+}
