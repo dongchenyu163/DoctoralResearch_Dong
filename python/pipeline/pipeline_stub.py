@@ -56,16 +56,13 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
         "total_combinations": int(combination_matrix.shape[0]),
     }
 
-    # Knife wrench (Algorithm 4 pre-step) extracted once for the current dataset.
-    contact_surface: ContactSurfaceResult = extract_contact_surface(preprocess_result, recorder)
-    with recorder.section("python/wrench_compute"):
-        wrench = compute_wrench(contact_surface, config)
-    mesh_boolean_summary = dict(contact_surface.metadata)
-
+    # Knife wrench (Algorithm 4 pre-step) computed per timestep.
     trajectory_nodes: List[TrajectoryNode] = build_test_trajectory(preprocess_result, config, recorder)
     timestep_reports: List[Dict[str, object]] = []
     instrumentation = config.instrumentation
     valid_summary: Dict[str, object] | None = None
+    last_contact_metadata: Dict[str, float] = {}
+    last_wrench: np.ndarray | None = None
 
     pos_weights = config.weights.get("pos_score", {})
     w_pdir = float(pos_weights.get("w_pdir", 1.0))
@@ -122,6 +119,12 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
                 if instrumentation.emit_per_timestep_report:
                     timestep_reports.append(step_report)
                 continue
+
+            contact_surface: ContactSurfaceResult = extract_contact_surface(preprocess_result, recorder, node.pose)
+            with recorder.section("python/wrench_compute"):
+                wrench = compute_wrench(contact_surface, config)
+            last_contact_metadata = dict(contact_surface.metadata)
+            last_wrench = wrench
 
             # Algorithm 2: Geometry filter (Table 1 section Ωg).
             filtered_candidates = geo_filter.run(valid_result, valid_candidates, recorder)
@@ -200,8 +203,8 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
         "preprocess": preprocess_summary,
         "valid_indices": valid_summary,
         "combinations": combinations_summary,
-        "contact_surface": mesh_boolean_summary,
-        "wrench": wrench.tolist(),
+        "contact_surface": last_contact_metadata,
+        "wrench": last_wrench.tolist() if last_wrench is not None else [],
         "trajectory": {"nodes": len(trajectory_nodes)},
         "scores": score_section,
         "timesteps": timestep_reports if instrumentation.emit_per_timestep_report else [],

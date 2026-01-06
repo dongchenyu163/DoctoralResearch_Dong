@@ -22,7 +22,7 @@ class ContactSurfaceTests(unittest.TestCase):
             points_low=np.array([[-0.05, 0.0, -0.05], [0.05, 0.0, 0.05]], dtype=np.float64),
             normals_low=np.zeros((2, 3), dtype=np.float64),
         )
-        result = extract_contact_surface(preprocess, recorder)
+        result = extract_contact_surface(preprocess, recorder, knife_pose=np.eye(4, dtype=np.float64))
         self.assertIsInstance(result, ContactSurfaceResult)
         self.assertIn("total_faces", result.metadata)
         self.assertGreaterEqual(len(result.faces), 0)

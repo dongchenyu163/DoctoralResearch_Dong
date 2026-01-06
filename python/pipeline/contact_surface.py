@@ -21,18 +21,19 @@ class ContactSurfaceResult:
 def extract_contact_surface(
     preprocess: PreprocessResult,
     recorder: TimingRecorder,
+    knife_pose: np.ndarray,
 ) -> ContactSurfaceResult:
     """Compute contact faces used by fracture/friction integrals.
 
     Steps (per spec §3.4):
         1. Build dense proxy mesh (currently bbox placeholder) from Ω_low.
-        2. Intersect with knife mesh.
+        2. Intersect with knife mesh transformed by current pose.
         3. Filter faces by alignment with knife side plane to isolate contact surface.
         4. Split connected components to recover Ω_c1, Ω_c2.
     """
     with recorder.section("python/contact_surface_total"):
         dense_mesh = _build_dense_mesh(preprocess)
-        knife_mesh = _build_knife_mesh()
+        knife_mesh = _build_knife_mesh(knife_pose)
         with recorder.section("python/mesh_boolean"):
             try:
                 intersection = trimesh.boolean.intersection([dense_mesh, knife_mesh])
@@ -59,7 +60,7 @@ def _build_dense_mesh(preprocess: PreprocessResult) -> trimesh.Trimesh:
     return box
 
 
-def _build_knife_mesh() -> trimesh.Trimesh:
+def _build_knife_mesh(knife_pose: np.ndarray) -> trimesh.Trimesh:
     verts = np.array(
         [
             [0.0, -0.01, -0.1],
@@ -68,7 +69,10 @@ def _build_knife_mesh() -> trimesh.Trimesh:
         ]
     )
     faces = np.array([[0, 1, 2]])
-    return trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+    mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+    if knife_pose.shape == (4, 4):
+        mesh.apply_transform(knife_pose)
+    return mesh
 
 
 def _filter_faces(mesh: trimesh.Trimesh) -> List[np.ndarray]:
