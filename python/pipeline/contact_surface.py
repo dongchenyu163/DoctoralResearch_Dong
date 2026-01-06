@@ -36,6 +36,7 @@ def extract_contact_surface(
     """Compute contact faces for Algorithm 4 based on current knife pose."""
     base_mesh = preprocess.food_mesh or _build_dense_mesh(preprocess.points_low)
     if base_mesh is None:
+        LOGGER.error("Base food mesh missing; cannot extract contact surfaces")
         return ContactSurfaceResult(faces=[], metadata={"total_faces": 0.0, "components": 0.0}, mesh=None)
     with recorder.section("python/contact_surface_total"):
         with recorder.section("python/mesh_boolean"):
@@ -44,7 +45,7 @@ def extract_contact_surface(
                 if isinstance(intersection, (list, tuple)):
                     intersection = trimesh.util.concatenate(intersection)
             except Exception as exc:  # pragma: no cover - backend specific
-                LOGGER.warning("Mesh boolean failed (%s); returning empty contact surface", exc)
+                LOGGER.error("Mesh boolean failed (%s); returning empty contact surface", exc)
                 intersection = None
         faces = _filter_faces_with_planes(
             intersection,
@@ -56,6 +57,7 @@ def extract_contact_surface(
     metadata = {
         "total_faces": float(total_faces),
         "components": float(len([arr for arr in faces if arr.size])),
+        "side_counts": [float(group.shape[0]) for group in faces],
     }
     LOGGER.debug(
         "Contact surface faces=%d components=%d bounds=%s",
@@ -63,6 +65,11 @@ def extract_contact_surface(
         int(metadata["components"]),
         np.vstack([base_mesh.bounds[0], base_mesh.bounds[1]]).tolist(),
     )
+    for idx, group in enumerate(faces):
+        if group.size == 0:
+            LOGGER.error("Contact surface side %d empty after filtering", idx)
+        else:
+            LOGGER.info("Contact surface side %d triangles=%d", idx, group.shape[0])
     return ContactSurfaceResult(faces=faces, metadata=metadata, mesh=intersection)
 
 
@@ -81,6 +88,7 @@ def _filter_faces_with_planes(
     normal_threshold: float,
 ) -> List[np.ndarray]:
     if mesh is None or mesh.is_empty:
+        LOGGER.error("Intersection mesh empty; no contact faces found")
         return [np.empty((0, 3, 3), dtype=np.float64), np.empty((0, 3, 3), dtype=np.float64)]
     triangles = mesh.triangles
     normals = mesh.face_normals

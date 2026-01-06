@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import importlib
 import logging
-import os
-import sys
 from dataclasses import dataclass, field
 import hashlib
 from pathlib import Path
@@ -25,6 +22,7 @@ except ImportError:  # pragma: no cover - optional dependency
 
 from python.instrumentation.timing import TimingRecorder
 from python.utils.config_loader import Config
+from python.utils import py_gpt
 
 LOGGER = logging.getLogger("pipeline.preprocess")
 
@@ -246,55 +244,41 @@ def _estimate_normals(points: np.ndarray, search_radius: float, max_nn: int = 30
 
 
 def _build_food_mesh(points: np.ndarray, config: Config) -> Optional["trimesh.Trimesh"]:
-    """Generate dense food mesh using MLS smoothing on Ω_high."""
+    """Generate dense food mesh using greedy projection triangulation (py_gpt)."""
     if points.size < 3:
+        LOGGER.error("Ω_high cloud too small for mesh reconstruction")
         return None
     if o3d is None or trimesh is None:
-        LOGGER.warning("Skipping food mesh build (open3d or trimesh missing)")
+        LOGGER.error("Cannot build food mesh (open3d or trimesh missing)")
         return None
     mesh_cfg = config.preprocess.get("mesh", {})
     if not bool(mesh_cfg.get("enabled", True)):
         return None
-    bbox = _to_point_cloud(points).get_axis_aligned_bounding_box()
-    extent = bbox.get_extent()
-    diag = float(np.linalg.norm(extent)) or 0.1
-    mls_radius = float(mesh_cfg.get("mls_radius", diag * 0.02))
-    alpha = float(mesh_cfg.get("alpha", diag * 0.05))
-    try:
-        smoothing = _load_mls_function()
-    except RuntimeError as exc:
-        LOGGER.warning("MLS smoothing unavailable: %s", exc)
-        return None
     cloud = _to_point_cloud(points)
-    smoothed = smoothing(cloud, radius=mls_radius)
-    try:
-        mesh_o3d = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(smoothed, alpha)
-    except Exception as exc:  # pragma: no cover - depends on dataset
-        LOGGER.warning("Alpha-shape meshing failed (%s); falling back to ball pivot", exc)
-        radii = o3d.utility.DoubleVector([alpha, alpha * 1.5])
-        mesh_o3d = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(smoothed, radii)
-    mesh_o3d.compute_triangle_normals()
-    vertices = np.asarray(mesh_o3d.vertices, dtype=np.float64)
-    faces = np.asarray(mesh_o3d.triangles, dtype=np.int64)
-    if vertices.size == 0 or faces.size == 0:
-        LOGGER.warning("Generated mesh empty after MLS smoothing")
+    normal_radius = float(mesh_cfg.get("normal_radius", config.preprocess.get("normal_estimation_radius", 0.01)))
+    normal_max_nn = int(mesh_cfg.get("normal_max_nn", 60))
+    cloud.estimate_normals(
+        search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=max(normal_radius, 1e-4), max_nn=max(3, normal_max_nn))
+    )
+    normals = np.asarray(cloud.normals, dtype=np.float64)
+    if normals.shape[0] != points.shape[0]:
+        LOGGER.error("Failed to estimate normals for Ω_high; mesh reconstruction aborted")
         return None
-    return trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
-
-
-def _load_mls_function():
-    """Import MLS smoothing helper, retrying with NUMBA_DISABLE_JIT on failure."""
-    module_name = "algorithms.points_algo.mls_surface_smooth_numba"
+    pts = np.asarray(cloud.points, dtype=np.float64)
+    pts_normals = np.hstack([pts, normals])
+    params = py_gpt.GPTParams()
+    overrides = mesh_cfg.get("gpt_params", {})
+    for key, value in overrides.items():
+        if hasattr(params, key):
+            setattr(params, key, value)
     try:
-        module = importlib.import_module(module_name)
-        return module.mls_smoothing_numba
-    except Exception as first_exc:  # pragma: no cover - depends on environment
-        os.environ.setdefault("NUMBA_DISABLE_JIT", "1")
-        if module_name in sys.modules:
-            del sys.modules[module_name]
-        try:
-            module = importlib.import_module(module_name)
-            LOGGER.warning("mls_smoothing_numba imported with NUMBA_DISABLE_JIT=1 due to %s", first_exc)
-            return module.mls_smoothing_numba
-        except Exception as final_exc:  # pragma: no cover
-            raise RuntimeError(f"Failed to import MLS smoothing helper: {final_exc}") from final_exc
+        faces = py_gpt.compute_mesh(pts_normals, params)
+    except Exception as exc:  # pragma: no cover - depends on native module
+        LOGGER.error("py_gpt mesh reconstruction raised %s", exc)
+        return None
+    if faces.size == 0:
+        LOGGER.error("py_gpt returned empty face set; skip food mesh build")
+        return None
+    mesh = trimesh.Trimesh(vertices=pts, faces=np.asarray(faces, dtype=np.int64), process=False)
+    LOGGER.info("Food mesh built via greedy triangulation: vertices=%d faces=%d", mesh.vertices.shape[0], mesh.faces.shape[0])
+    return mesh

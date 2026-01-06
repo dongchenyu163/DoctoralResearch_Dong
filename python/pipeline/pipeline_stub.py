@@ -138,6 +138,15 @@ def run_pipeline(
             )
             if pc_logger and pc_logger.enabled_for("omega_g") and valid_result.indices.size:
                 pc_logger.save_point_cloud("omega_g", step_idx, preprocess_result.points_low[valid_result.indices])
+            if valid_result.indices.size == 0:
+                VALID_LOGGER.error(
+                    "Step %d Ωg empty after filters (table=%d knife=%d center=%d slice=%d)",
+                    step_idx,
+                    valid_result.passed_table,
+                    valid_result.passed_knife,
+                    valid_result.passed_center_plane,
+                    valid_result.passed_penetration_plane,
+                )
             if valid_summary is None:
                 valid_summary = {
                     "count": int(valid_result.indices.size),
@@ -207,6 +216,11 @@ def run_pipeline(
                 contact_surface.metadata.get("components"),
             )
             CONTACT_LOGGER.debug("Step %d contact metadata=%s", step_idx, contact_surface.metadata)
+            for side_idx, count in enumerate(contact_surface.metadata.get("side_counts", [])):
+                if count <= 0:
+                    CONTACT_LOGGER.error("Step %d contact side %d empty", step_idx, side_idx)
+                else:
+                    CONTACT_LOGGER.info("Step %d contact side %d triangles=%d", step_idx, side_idx, int(count))
 
             # Algorithm 2: Geometry filter (Table 1 section Ωg).
             log_boxed_heading(SCORES_LOGGER, f"3.{step_idx + 1}.2", "GeoFilter + Scores")

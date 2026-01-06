@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import numpy as np
@@ -9,6 +10,8 @@ import numpy as np
 from python.instrumentation.timing import TimingRecorder
 from python.pipeline.knife_model import KnifeInstance, PlaneInstance
 from python.utils.config_loader import Config
+
+LOGGER = logging.getLogger("pipeline.valid_indices.core")
 
 
 @dataclass
@@ -57,6 +60,18 @@ def compute_valid_indices(
 
     valid_mask = table_mask & knife_mask & center_mask & penetration_mask
     indices = np.nonzero(valid_mask)[0].astype(np.int32)
+    LOGGER.info(
+        "Ωg built: table_pass=%d knife_pass=%d center_pass=%d slice_pass=%d survivors=%d",
+        int(table_mask.sum()),
+        int(knife_mask.sum()),
+        int(center_mask.sum()),
+        int(penetration_mask.sum()),
+        int(indices.size),
+    )
+    if indices.size == 0:
+        LOGGER.error("Ωg empty after filters (table>=%.4f knife<=%.4f tolerance=%.5f)", table_threshold, knife_threshold, plane_tolerance)
+    if center_mask.sum() == 0 or penetration_mask.sum() == 0:
+        LOGGER.error("Knife plane clipping removed all points (center=%d slice=%d)", int(center_mask.sum()), int(penetration_mask.sum()))
     return ValidIndicesResult(
         indices=indices,
         table_threshold=table_threshold,
