@@ -97,12 +97,14 @@ def preprocess_point_cloud(
 def _load_points_from_file(path: Path) -> np.ndarray:
     suffix = path.suffix.lower()
     if suffix in {".ply", ".pcd"}:
-        if o3d is None:
-            raise RuntimeError("open3d is required to load .ply/.pcd point clouds")
-        cloud = o3d.io.read_point_cloud(str(path))  # pragma: no cover - depends on optional data
-        if not cloud.has_points():
-            raise ValueError(f"Point cloud {path} is empty")
-        return np.asarray(cloud.points, dtype=np.float64)
+        if o3d is not None:
+            cloud = o3d.io.read_point_cloud(str(path))  # pragma: no cover - depends on optional data
+            if not cloud.has_points():
+                raise ValueError(f"Point cloud {path} is empty")
+            return np.asarray(cloud.points, dtype=np.float64)
+        if suffix == ".pcd":
+            return _load_pcd_ascii(path)
+        raise RuntimeError("open3d is required to load .ply/.pcd point clouds")
     if suffix == ".npy":
         return np.load(path).astype(np.float64)
     if suffix == ".npz":
@@ -124,6 +126,20 @@ def _generate_synthetic_point_cloud(count: int) -> np.ndarray:
     repeat = int(np.ceil(count / mesh.shape[0]))
     tiled = np.tile(mesh, (repeat, 1))
     return tiled[:count]
+
+
+def _load_pcd_ascii(path: Path) -> np.ndarray:
+    header_lines = 0
+    with path.open("r", encoding="utf-8") as f:
+        for header_lines, line in enumerate(f, start=1):
+            if line.strip().upper().startswith("DATA"):
+                break
+        else:
+            raise ValueError(f"{path} does not contain a DATA section")
+    data = np.loadtxt(path, skiprows=header_lines, dtype=np.float64, ndmin=2)
+    if data.shape[1] < 3:
+        raise ValueError(f"{path} contains fewer than 3 columns")
+    return np.ascontiguousarray(data[:, :3], dtype=np.float64)
 
 
 def _downsample_points(points: np.ndarray, target: int, seed: Optional[int]) -> np.ndarray:
