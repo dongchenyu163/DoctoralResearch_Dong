@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 
@@ -134,26 +135,63 @@ def _to_point_cloud(points: np.ndarray) -> "o3d.geometry.PointCloud":
     return cloud
 
 
+_VOXEL_CACHE: Dict[Tuple[str, int], float] = {}
+
+
+def _points_hash(points: np.ndarray) -> str:
+    view = np.ascontiguousarray(points, dtype=np.float32)
+    return hashlib.sha1(view.tobytes()).hexdigest()
+
+
 def _downsample_points(points: np.ndarray, target: int) -> np.ndarray:
     if target <= 0 or target >= points.shape[0]:
         return np.ascontiguousarray(points, dtype=np.float64)
+
+    cache_key = (_points_hash(points), target)
+    cached_voxel = _VOXEL_CACHE.get(cache_key)
+
     cloud = _to_point_cloud(points)
     bbox = cloud.get_axis_aligned_bounding_box()
     extent = bbox.get_extent()
-    diag = float(np.linalg.norm(extent))
-    voxel_size = diag / max(np.cbrt(target), 1.0)
-    voxel_size = max(voxel_size, 1e-4)
-    down_cloud = cloud.voxel_down_sample(voxel_size)
-    if len(down_cloud.points) == 0:
-        down_cloud = cloud
-    down_points = np.asarray(down_cloud.points, dtype=np.float64)
-    if down_points.shape[0] > target:
-        down_points = down_points[:target]
-    elif down_points.shape[0] < target:
-        deficit = target - down_points.shape[0]
+    diag = float(np.linalg.norm(extent)) or 0.1
+    low = max(diag * 1e-4, 1e-4)
+    high = max(diag, 0.2)
+
+    best_points = None
+    best_voxel = cached_voxel if cached_voxel is not None else high
+
+    def sample(voxel: float) -> np.ndarray:
+        sampled = cloud.voxel_down_sample(voxel)
+        return np.asarray(sampled.points, dtype=np.float64)
+
+    if cached_voxel is not None:
+        best_points = sample(cached_voxel)
+    else:
+        for _ in range(20):
+            voxel = (low + high) / 2.0
+            sampled_points = sample(voxel)
+            count = sampled_points.shape[0]
+            if best_points is None or abs(count - target) < abs(best_points.shape[0] - target):
+                best_points = sampled_points
+                best_voxel = voxel
+            if count > target:
+                low = voxel
+            elif count < target:
+                high = voxel
+            else:
+                break
+
+    if best_points is None or best_points.size == 0:
+        best_points = np.asarray(points[:target], dtype=np.float64)
+    _VOXEL_CACHE[cache_key] = best_voxel
+
+    if best_points.shape[0] > target:
+        best_points = best_points[:target]
+    elif best_points.shape[0] < target:
+        deficit = target - best_points.shape[0]
         fallback = np.ascontiguousarray(points[:deficit], dtype=np.float64)
-        down_points = np.concatenate([down_points, fallback], axis=0)
-    return np.ascontiguousarray(down_points, dtype=np.float64)
+        best_points = np.concatenate([best_points, fallback], axis=0)
+    return np.ascontiguousarray(best_points, dtype=np.float64)
 
 
 def _estimate_normals(points: np.ndarray, search_radius: float, max_nn: int = 30) -> np.ndarray:
