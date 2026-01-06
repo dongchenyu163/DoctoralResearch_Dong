@@ -1,6 +1,6 @@
 {
   "preprocess": {
-    "point_cloud_path": null,
+    "point_cloud_path": "/home/cookteam/Workspace/CPP_Program/python_force_calc_2026/tests/points.pcd",
     "synthetic_point_count": 512,
     "downsample_num": 100,
     "normal_estimation_radius": 0.01
@@ -22,8 +22,8 @@
     }
   },
   "knife": {
-    "edge_angle_deg": 30.0,
-    "height": 0.05
+    "edge_angle_deg": 5.0,
+    "height": 0.1
   },
   "physics": {
     "friction_coef": 0.5,

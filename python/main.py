@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sys
+sys.path.append("/home/cookteam/Workspace/CPP_Program/python_force_calc_2026")
+
 import argparse
 import json
 from pathlib import Path
