@@ -79,6 +79,8 @@
         "valid_filter_knife": true,
         "mesh_boolean": true,
         "contact_surface_purify": true,
+        "contact_surface_total": true,
+        "wrench_compute": true,
         "accumulate_scores": true,
         "build_P_all": true
       },

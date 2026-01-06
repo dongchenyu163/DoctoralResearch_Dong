@@ -52,7 +52,8 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
     filtered_candidates = geo_filter.run(valid_result, combination_matrix, recorder)
 
     contact_surface: ContactSurfaceResult = extract_contact_surface(preprocess_result, recorder)
-    wrench = compute_wrench(contact_surface, config)
+    with recorder.section("python/wrench_compute"):
+        wrench = compute_wrench(contact_surface, config)
     mesh_boolean_summary = {
         "contact_faces": contact_surface.metadata.get("total_faces", 0.0),
         "purified_faces": contact_surface.metadata.get("total_faces", 0.0),

@@ -146,6 +146,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 "valid_filter_knife": True,
                 "mesh_boolean": True,
                 "contact_surface_purify": True,
+                "contact_surface_total": True,
+                "wrench_compute": True,
                 "accumulate_scores": True,
                 "build_P_all": True,
             },
