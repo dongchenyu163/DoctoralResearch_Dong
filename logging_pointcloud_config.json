@@ -9,6 +9,8 @@
     "food_mesh": true,
     "knife_food_intersection": true,
     "contact_mesh_side0": true,
-    "contact_mesh_side1": true
+    "contact_mesh_side1": true,
+    "boolean_base_mesh": true,
+    "boolean_knife_mesh": true
   }
 }

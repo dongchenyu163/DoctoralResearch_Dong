@@ -287,6 +287,7 @@ def _build_mesh_greedy(points: np.ndarray, method_cfg: Dict[str, object], config
     cloud.estimate_normals(
         search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=max(normal_radius, 1e-4), max_nn=max(3, normal_max_nn))
     )
+    cloud.orient_normals_consistent_tangent_plane(30)
     normals = np.asarray(cloud.normals, dtype=np.float64)
     if normals.shape[0] != points.shape[0]:
         LOGGER.error("Failed to estimate normals for Ω_high; mesh reconstruction aborted")

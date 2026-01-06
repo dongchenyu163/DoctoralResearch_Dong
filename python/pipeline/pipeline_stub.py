@@ -192,6 +192,11 @@ def run_pipeline(
             log_boxed_heading(CONTACT_LOGGER, f"3.{step_idx + 1}.1", "Contact Surface + Wrench")
             contact_surface: ContactSurfaceResult = extract_contact_surface(preprocess_result, recorder, knife_instance)
             if pc_logger:
+                if pc_logger.enabled_for("boolean_base_mesh") and preprocess_result.food_mesh is not None:
+                    pc_logger.save_mesh("boolean_base_mesh", step_idx, preprocess_result.food_mesh)
+                if pc_logger.enabled_for("boolean_knife_mesh"):
+                    pc_logger.save_mesh("boolean_knife_mesh", step_idx, knife_instance.mesh)
+            if pc_logger:
                 if pc_logger.enabled_for("contact_faces"):
                     contact_points = _flatten_contact_faces(contact_surface.faces)
                     omega_points = preprocess_result.points_low[valid_result.indices] if valid_result.indices.size else np.empty((0, 3))
