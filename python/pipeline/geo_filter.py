@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
@@ -18,14 +19,18 @@ from python.instrumentation.timing import TimingRecorder
 from python.pipeline.preprocess import PreprocessResult
 from python.pipeline.valid_indices import ValidIndicesResult
 from python.utils.config_loader import Config
+from python.utils.logging_setup import CppLoggingSettings
 
 
 class GeoFilterRunner:
     """High-level helper that coordinates ScoreCalculator usage for Algorithms 2–4."""
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, cpp_logging: Optional[CppLoggingSettings] = None):
         self.config = config
         self._calculator = score_calculator.ScoreCalculator()
+        if cpp_logging and cpp_logging.enabled:
+            file_path = str(cpp_logging.file_path) if cpp_logging.file_path else ""
+            self._calculator.configure_logging(cpp_logging.logger_name, cpp_logging.console, file_path, cpp_logging.level)
         max_candidates = int(config.search.get("max_geo_candidates", 0))
         if max_candidates > 0:
             self._calculator.set_max_candidates(max_candidates)

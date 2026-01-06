@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import trimesh
@@ -16,6 +16,7 @@ from python.pipeline.preprocess import PreprocessResult
 class ContactSurfaceResult:
     faces: List[np.ndarray]
     metadata: Dict[str, float]
+    mesh: Optional[trimesh.Trimesh]
 
 
 def extract_contact_surface(
@@ -46,7 +47,7 @@ def extract_contact_surface(
         "total_faces": float(len(purified_faces)),
         "components": float(len(clusters)),
     }
-    return ContactSurfaceResult(faces=clusters, metadata=metadata)
+    return ContactSurfaceResult(faces=clusters, metadata=metadata, mesh=intersection)
 
 
 def _build_dense_mesh(preprocess: PreprocessResult) -> trimesh.Trimesh:

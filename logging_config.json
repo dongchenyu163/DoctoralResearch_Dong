@@ -1,0 +1,26 @@
+{
+  "enabled": true,
+  "console": {
+    "enabled": true,
+    "level": "INFO"
+  },
+  "file": {
+    "enabled": true,
+    "level": "DEBUG",
+    "path": "logs/pipeline.log"
+  },
+  "modules": {
+    "pipeline": {"level": "INFO"},
+    "pipeline.preprocess": {"level": "INFO"},
+    "pipeline.valid_indices": {"level": "INFO"},
+    "pipeline.contact_surface": {"level": "INFO"},
+    "pipeline.scores": {"level": "INFO"}
+  },
+  "cpp": {
+    "enabled": true,
+    "logger_name": "cpp.score_calculator",
+    "level": "info",
+    "console": true,
+    "file": "logs/score_calculator.log"
+  }
+}

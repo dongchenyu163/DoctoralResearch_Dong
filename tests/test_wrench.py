@@ -22,7 +22,7 @@ class WrenchTests(unittest.TestCase):
                 ]
             )
         ]
-        surface = ContactSurfaceResult(faces=faces, metadata={"total_faces": 2})
+        surface = ContactSurfaceResult(faces=faces, metadata={"total_faces": 2}, mesh=None)
         wrench = compute_wrench(surface, config)
         self.assertEqual(wrench.shape, (6,))
         self.assertAlmostEqual(wrench[2], 0.0)
@@ -38,7 +38,7 @@ class WrenchTests(unittest.TestCase):
                 ]
             )
         ]
-        surface = ContactSurfaceResult(faces=faces, metadata={})
+        surface = ContactSurfaceResult(faces=faces, metadata={}, mesh=None)
         config_zero = make_config({"physics": {"friction_coef": 0.0, "planar_constraint": False}})
         config_high = make_config({"physics": {"friction_coef": 1.0, "planar_constraint": False}})
         wrench_zero = compute_wrench(surface, config_zero)

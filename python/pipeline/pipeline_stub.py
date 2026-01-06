@@ -9,7 +9,8 @@
 
 from __future__ import annotations
 
-from typing import Dict, List
+import logging
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -23,9 +24,23 @@ from python.pipeline.trajectory import TrajectoryNode, build_test_trajectory
 from python.pipeline.valid_indices import compute_valid_indices
 from python.pipeline.wrench import compute_wrench
 from python.utils.config_loader import Config
+from python.utils.logging_setup import CppLoggingSettings
+from python.utils.pointcloud_logging import PointCloudDebugSaver
+
+LOGGER = logging.getLogger("pipeline")
+PREPROCESS_LOGGER = logging.getLogger("pipeline.preprocess")
+VALID_LOGGER = logging.getLogger("pipeline.valid_indices")
+CONTACT_LOGGER = logging.getLogger("pipeline.contact_surface")
+SCORES_LOGGER = logging.getLogger("pipeline.scores")
 
 
-def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
+def run_pipeline(
+    config: Config,
+    recorder: TimingRecorder,
+    *,
+    pc_logger: Optional[PointCloudDebugSaver] = None,
+    cpp_logging: Optional[CppLoggingSettings] = None,
+) -> Dict[str, object]:
     """Execute Algorithm 1 end-to-end and return summarized diagnostics.
 
     Args:
@@ -33,7 +48,13 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
         recorder: Timing recorder that emits per-section instrumentation.
     """
     raw_cloud: RawPointCloud = load_point_cloud(config, recorder)
+    LOGGER.info("Loaded point cloud source=%s count=%d", raw_cloud.source_path, raw_cloud.points.shape[0])
     preprocess_result: PreprocessResult = preprocess_point_cloud(raw_cloud, config, recorder)
+    PREPROCESS_LOGGER.info(
+        "Downsampled to %d points (target=%s)",
+        preprocess_result.downsampled_point_count,
+        config.preprocess.get("downsample_num"),
+    )
 
     dataset_info = {
         "source": str(raw_cloud.source_path) if raw_cloud.source_path else "synthetic",
@@ -45,7 +66,7 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
         "normal_estimation_radius": config.preprocess.get("normal_estimation_radius"),
     }
 
-    geo_filter = GeoFilterRunner(config)
+    geo_filter = GeoFilterRunner(config, cpp_logging=cpp_logging)
     geo_filter.set_point_cloud(preprocess_result)
 
     finger_count = int(config.search.get("finger_count", 2))
@@ -80,6 +101,13 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
                 knife_position,
                 knife_normal,
             )
+            VALID_LOGGER.info(
+                "Step %d Ωg count=%d thresholds(table>=%.4f knife<=%.4f)",
+                step_idx,
+                valid_result.indices.size,
+                valid_result.table_threshold,
+                valid_result.knife_threshold,
+            )
             if valid_summary is None:
                 valid_summary = {
                     "count": int(valid_result.indices.size),
@@ -103,6 +131,7 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
             invalid_ids = active_ids[~valid_mask]
             if invalid_ids.size:
                 accumulator.mark_eliminated(invalid_ids, "invalid_indices", step_idx)
+                SCORES_LOGGER.debug("Step %d eliminated %d candidates by Ωg", step_idx, invalid_ids.size)
 
             step_report = {
                 "timestep": step_idx,
@@ -125,6 +154,21 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
                 wrench = compute_wrench(contact_surface, config)
             last_contact_metadata = dict(contact_surface.metadata)
             last_wrench = wrench
+            CONTACT_LOGGER.info(
+                "Step %d contact faces=%s components=%s",
+                step_idx,
+                contact_surface.metadata.get("total_faces"),
+                contact_surface.metadata.get("components"),
+            )
+            if pc_logger and pc_logger.enabled_for("contact_faces"):
+                contact_points = _flatten_contact_faces(contact_surface.faces)
+                omega_points = preprocess_result.points_low[valid_result.indices] if valid_result.indices.size else np.empty((0, 3))
+                combined_points, combined_colors = _combine_points_for_debug(omega_points, contact_points)
+                pc_logger.save_point_cloud("contact_faces", step_idx, combined_points, combined_colors)
+            if pc_logger and pc_logger.enabled_for("contact_mesh") and contact_surface.mesh is not None:
+                pc_logger.save_mesh("contact_mesh", step_idx, contact_surface.mesh)
+            if pc_logger and pc_logger.enabled_for("omega_g") and valid_result.indices.size:
+                pc_logger.save_point_cloud("omega_g", step_idx, preprocess_result.points_low[valid_result.indices])
 
             # Algorithm 2: Geometry filter (Table 1 section Ωg).
             filtered_candidates = geo_filter.run(valid_result, valid_candidates, recorder)
@@ -155,6 +199,14 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
             step_report["positional_score_mean"] = float(pos_combined.mean()) if pos_combined.size else 0.0
             step_report["dynamic_score_mean"] = float(dynamics_scores.mean()) if dynamics_scores.size else 0.0
             step_report["candidate_counts"]["alive"] = int(accumulator.active_mask.sum())
+            SCORES_LOGGER.info(
+                "Step %d alive=%d geo_filtered=%d pos_mean=%.3f dyn_mean=%.3f",
+                step_idx,
+                step_report["candidate_counts"]["alive"],
+                step_report["candidate_counts"]["geo_filtered"],
+                step_report["positional_score_mean"],
+                step_report["dynamic_score_mean"],
+            )
 
             if instrumentation.emit_per_timestep_report:
                 timestep_reports.append(step_report)
@@ -178,6 +230,15 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
     best_summary = (
         _build_candidate_summary(best_idx, accumulator, preprocess_result) if best_idx is not None else None
     )
+    if best_summary:
+        SCORES_LOGGER.info(
+            "Best candidate idx=%d total=%.3f hit_count=%d",
+            best_summary["combination_index"],
+            best_summary["score_total"],
+            best_summary["hit_count"],
+        )
+    else:
+        SCORES_LOGGER.warning("No valid candidates remained after processing.")
 
     top_ids = accumulator.top_candidates(5)
     top_candidates = [_build_candidate_summary(idx, accumulator, preprocess_result) for idx in top_ids]
@@ -262,3 +323,24 @@ def _build_candidate_summary(index: int, accumulator: ScoreAccumulator, preproce
         "score_dynamic": float(accumulator.dynamic_scores[index]),
         "hit_count": int(accumulator.hit_counts[index]),
     }
+
+
+def _flatten_contact_faces(faces: List[np.ndarray]) -> np.ndarray:
+    flattened = [np.asarray(face).reshape(-1, 3) for face in faces if face.size]
+    if not flattened:
+        return np.empty((0, 3), dtype=np.float64)
+    return np.vstack(flattened)
+
+
+def _combine_points_for_debug(omega_points: np.ndarray, contact_points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    point_blocks = []
+    color_blocks = []
+    if omega_points.size:
+        point_blocks.append(omega_points)
+        color_blocks.append(np.tile(np.array([[0.0, 1.0, 0.0]]), (omega_points.shape[0], 1)))
+    if contact_points.size:
+        point_blocks.append(contact_points)
+        color_blocks.append(np.tile(np.array([[1.0, 0.0, 0.0]]), (contact_points.shape[0], 1)))
+    if not point_blocks:
+        return np.empty((0, 3)), np.empty((0, 3))
+    return np.vstack(point_blocks), np.vstack(color_blocks)

@@ -12,6 +12,8 @@ from typing import Dict, Iterable, List
 from python.instrumentation.timing import TimingRecorder
 from python.pipeline.pipeline_stub import run_pipeline
 from python.utils.config_loader import Config, load_config
+from python.utils.logging_setup import CppLoggingSettings, configure_python_logging, load_logging_settings
+from python.utils.pointcloud_logging import PointCloudDebugSaver, load_pointcloud_logging_config
 
 
 def parse_args() -> argparse.Namespace:
@@ -49,10 +51,10 @@ def _clone_config(base: Config) -> Config:
     return deepcopy(base)
 
 
-def _run_trial(config: Config) -> Dict[str, object]:
+def _run_trial(config: Config, pc_logger: PointCloudDebugSaver, cpp_logging: CppLoggingSettings) -> Dict[str, object]:
     recorder = TimingRecorder(config.instrumentation)
     start = time.perf_counter()
-    result = run_pipeline(config, recorder)
+    result = run_pipeline(config, recorder, pc_logger=pc_logger, cpp_logging=cpp_logging)
     duration_ms = (time.perf_counter() - start) * 1000.0
     best = result.get("scores", {}).get("best_candidate")
     metrics = {
@@ -71,6 +73,10 @@ def _run_trial(config: Config) -> Dict[str, object]:
 
 def main() -> None:
     args = parse_args()
+    logging_settings = load_logging_settings(Path("logging_config.json"))
+    configure_python_logging(logging_settings.python)
+    pc_settings = load_pointcloud_logging_config(Path("logging_pointcloud_config.json"))
+    pc_logger = PointCloudDebugSaver(pc_settings)
     base_config = load_config(args.config)
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -81,7 +87,7 @@ def main() -> None:
             cfg = _clone_config(base_config)
             cfg.preprocess["downsample_num"] = int(downsample)
             cfg.search["force_sample_count"] = int(force_samples)
-            metrics = _run_trial(cfg)
+            metrics = _run_trial(cfg, pc_logger, logging_settings.cpp)
             metrics["downsample_num"] = downsample
             metrics["force_sample_count"] = force_samples
             records.append(metrics)

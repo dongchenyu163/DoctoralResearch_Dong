@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "output_dir": "debug_pc_calc_data",
+  "stages": {
+    "omega_g": true,
+    "contact_faces": true,
+    "contact_mesh": true
+  }
+}
