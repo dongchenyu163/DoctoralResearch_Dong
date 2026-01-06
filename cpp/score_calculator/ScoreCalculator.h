@@ -14,6 +14,11 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
+// ScoreCalculator implements Algorithms 2–4 in the specification:
+// - filterByGeoScore → Algorithm 2 (GeoFilter)
+// - calcPositionalScores / calcPositionalDistances → Algorithm 3 (PosScore)
+// - calcDynamicsScores → Algorithm 4 (DynScore)
+// Python orchestrates Algorithm 1 and provides data ownership via pcl::PointCloud.
 class ScoreCalculator {
  public:
   using PointMatrix = Eigen::Matrix<double, Eigen::Dynamic, 3, Eigen::RowMajor>;
@@ -30,26 +35,36 @@ class ScoreCalculator {
 
   ScoreCalculator() = default;
 
+  // Store Ω_low points/normals for later scoring. Expect points == normals rows == M.
   void setPointCloud(const Eigen::Ref<const PointMatrix>& points,
                      const Eigen::Ref<const PointMatrix>& normals);
 
   void setMaxCandidates(std::int64_t max_candidates) noexcept { max_candidates_ = max_candidates; }
+  // Geometry weights (Algorithm 2). Larger w_tbl prioritizes table clearance, etc.
   void setGeoWeights(double w_fin, double w_knf, double w_tbl) noexcept;
+  // Ratio in (0,1] controlling how many combinations survive Algorithm 2.
   void setGeoFilterRatio(double ratio) noexcept;
 
+  // Algorithm 2: compute S_geo and select top rows.
   CandidateMatrix filterByGeoScore(const Eigen::Ref<const CandidateMatrix>& candidate_indices,
                                    const Eigen::Vector3d& knife_p,
                                    const Eigen::Vector3d& knife_n,
                                    double table_z) const;
 
+  // Algorithm 3: E_pdir (smaller angle between PCA axis and knife normal is better).
   Eigen::VectorXd calcPositionalScores(const Eigen::Ref<const CandidateMatrix>& candidate_indices,
                                        const Eigen::Vector3d& knife_p,
                                        const Eigen::Vector3d& knife_n) const;
 
+  // Algorithm 3: E_pdis distance-to-plane term (normalized per step).
   Eigen::VectorXd calcPositionalDistances(const Eigen::Ref<const CandidateMatrix>& candidate_indices,
                                           const Eigen::Vector3d& knife_p,
                                           const Eigen::Vector3d& knife_n) const;
 
+  // Algorithm 4: evaluate combined dynamics score per candidate.
+  // wrench: 6x1 knife wrench (fx,fy,fz,mx,my,mz).
+  // friction_coef: μ term; increasing it relaxes tangential limits.
+  // friction_angle_deg: friction cone aperture (°); larger = wider cone.
   Eigen::VectorXd calcDynamicsScores(const Eigen::Ref<const CandidateMatrix>& candidate_indices,
                                      const Eigen::VectorXd& wrench,
                                      double friction_coef,

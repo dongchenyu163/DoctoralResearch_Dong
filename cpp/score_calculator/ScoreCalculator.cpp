@@ -4,6 +4,7 @@
 #include <numeric>
 #include <stdexcept>
 
+// Store Ω_low points inside a PCL cloud so every algorithm reuses identical data.
 void ScoreCalculator::setPointCloud(const Eigen::Ref<const PointMatrix>& points,
                                     const Eigen::Ref<const PointMatrix>& normals) {
   if (points.rows() != normals.rows()) {
@@ -39,6 +40,7 @@ void ScoreCalculator::setGeoFilterRatio(double ratio) noexcept {
 
 namespace {
 
+// Signed distance helper for both Algorithm 2 (knife clearance) and Algorithm 3 (lever arm).
 double distanceToPlane(const Eigen::Vector3d& point,
                        const Eigen::Vector3d& plane_point,
                        const Eigen::Vector3d& plane_normal) {
@@ -84,6 +86,7 @@ double minTableDistance(const Eigen::Matrix<double, Eigen::Dynamic, 3>& pts, dou
 
 }  // namespace
 
+// Algorithm 2: estimate E_fin via nearest neighbor distance in the subset.
 double ScoreCalculator::computeMinPairwiseDistance(const PointCloud& subset) const {
   if (subset.size() < 2) {
     return 0.0;
@@ -122,6 +125,7 @@ Eigen::Vector3d ScoreCalculator::computeCentroid(const PointCloud& subset) const
   return centroid;
 }
 
+// Algorithm 4: construct grasp matrix G = [I; skew(p_i)] for each contact.
 Eigen::MatrixXd ScoreCalculator::buildGraspMatrix(const Eigen::VectorXi& indices) const {
   const Eigen::Index contacts = indices.size();
   Eigen::MatrixXd G(6, 3 * contacts);
@@ -243,6 +247,7 @@ ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
   return output;
 }
 
+// Algorithm 3: PCA-based directional alignment.
 Eigen::VectorXd ScoreCalculator::calcPositionalScores(
     const Eigen::Ref<const CandidateMatrix>& candidate_indices,
     const Eigen::Vector3d& knife_p,
@@ -296,6 +301,7 @@ Eigen::VectorXd ScoreCalculator::calcPositionalScores(
   return scores;
 }
 
+// Algorithm 3: distance from candidate centroid to knife plane.
 Eigen::VectorXd ScoreCalculator::calcPositionalDistances(
     const Eigen::Ref<const CandidateMatrix>& candidate_indices,
     const Eigen::Vector3d& knife_p,
@@ -339,6 +345,7 @@ Eigen::VectorXd ScoreCalculator::calcPositionalDistances(
   return scores;
 }
 
+// Algorithm 4: evaluate dynamics feasibility, residuals, and score terms.
 Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     const Eigen::Ref<const CandidateMatrix>& candidate_indices,
     const Eigen::VectorXd& wrench,
