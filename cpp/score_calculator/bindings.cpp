@@ -32,5 +32,12 @@ PYBIND11_MODULE(score_calculator, m) {
           py::arg("candidate_indices"),
           py::arg("knife_position"),
           py::arg("knife_normal"))
+      .def(
+          "calc_dynamics_scores",
+          &ScoreCalculator::calcDynamicsScores,
+          py::arg("candidate_indices"),
+          py::arg("wrench"),
+          py::arg("friction_coef"),
+          py::arg("friction_angle_deg"))
       .def_property_readonly("point_count", &ScoreCalculator::pointCount);
 }

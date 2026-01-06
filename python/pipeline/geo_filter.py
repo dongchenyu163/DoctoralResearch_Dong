@@ -25,21 +25,21 @@ class GeoFilterRunner:
 
     def __init__(self, config: Config):
         self.config = config
-        self.calculator = score_calculator.ScoreCalculator()
+        self._calculator = score_calculator.ScoreCalculator()
         max_candidates = int(config.search.get("max_geo_candidates", 0))
         if max_candidates > 0:
-            self.calculator.set_max_candidates(max_candidates)
+            self._calculator.set_max_candidates(max_candidates)
         geo_weights = config.weights.get("geo_score", {})
-        self.calculator.set_geo_weights(
+        self._calculator.set_geo_weights(
             float(geo_weights.get("w_fin", 1.0)),
             float(geo_weights.get("w_knf", 1.0)),
             float(geo_weights.get("w_tbl", 1.0)),
         )
         geo_ratio = float(config.search.get("geo_filter_ratio", 1.0))
-        self.calculator.set_geo_filter_ratio(geo_ratio)
+        self._calculator.set_geo_filter_ratio(geo_ratio)
 
     def set_point_cloud(self, preprocess_result: PreprocessResult) -> None:
-        self.calculator.set_point_cloud(preprocess_result.points_low, preprocess_result.normals_low)
+        self._calculator.set_point_cloud(preprocess_result.points_low, preprocess_result.normals_low)
 
     def run(
         self,
@@ -53,7 +53,7 @@ class GeoFilterRunner:
         table_z = float(self.config.environment.get("table_z", 0.0))
 
         with recorder.section("python/geo_filter_call_cpp"):
-            result = self.calculator.filter_by_geo_score(filtered_candidates, knife_position, knife_normal, table_z)
+            result = self._calculator.filter_by_geo_score(filtered_candidates, knife_position, knife_normal, table_z)
         return np.asarray(result, dtype=np.int32)
 
     def calc_positional_scores(
@@ -64,7 +64,7 @@ class GeoFilterRunner:
     ) -> np.ndarray:
         if candidate_matrix.size == 0:
             return np.zeros((0,), dtype=np.float64)
-        scores = self.calculator.calc_positional_scores(candidate_matrix, knife_position, knife_normal)
+        scores = self._calculator.calc_positional_scores(candidate_matrix, knife_position, knife_normal)
         return np.asarray(scores, dtype=np.float64)
 
     def calc_positional_distances(
@@ -75,8 +75,12 @@ class GeoFilterRunner:
     ) -> np.ndarray:
         if candidate_matrix.size == 0:
             return np.zeros((0,), dtype=np.float64)
-        scores = self.calculator.calc_positional_distances(candidate_matrix, knife_position, knife_normal)
+        scores = self._calculator.calc_positional_distances(candidate_matrix, knife_position, knife_normal)
         return np.asarray(scores, dtype=np.float64)
+
+    @property
+    def calculator(self):
+        return self._calculator
 
 
 def _mask_candidates(candidate_matrix: np.ndarray, valid_indices: np.ndarray) -> np.ndarray:

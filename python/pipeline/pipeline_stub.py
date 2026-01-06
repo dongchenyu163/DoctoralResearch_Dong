@@ -7,6 +7,7 @@ from typing import Dict, List
 from python.instrumentation.timing import TimingRecorder
 from python.pipeline.accumulate import build_all_combinations
 from python.pipeline.contact_surface import ContactSurfaceResult, extract_contact_surface
+from python.pipeline.dynamics import compute_dynamics_scores
 from python.pipeline.geo_filter import GeoFilterRunner
 from python.pipeline.preprocess import PreprocessResult, RawPointCloud, load_point_cloud, preprocess_point_cloud
 from python.pipeline.trajectory import TrajectoryNode, build_test_trajectory
@@ -69,8 +70,10 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
             knife_normal = node.pose[:3, 2]
             positional_scores = geo_filter.calc_positional_scores(filtered_candidates, knife_position, knife_normal)
             positional_distances = geo_filter.calc_positional_distances(filtered_candidates, knife_position, knife_normal)
+            dynamics_scores = compute_dynamics_scores(geo_filter, filtered_candidates, wrench, config)
             pos_mean = float(positional_scores.mean()) if positional_scores.size else 0.0
             pdis_mean = float(positional_distances.mean()) if positional_distances.size else 0.0
+            dyn_mean = float(dynamics_scores.mean()) if dynamics_scores.size else 0.0
             with recorder.section("python/accumulate_scores"):
                 timestep_reports.append(
                     {
@@ -81,6 +84,7 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
                         "velocity": node.velocity.tolist(),
                         "positional_score_mean": pos_mean,
                         "positional_distance_mean": pdis_mean,
+                        "dynamics_score_mean": dyn_mean,
                     }
                 )
 

@@ -122,6 +122,27 @@ Eigen::Vector3d ScoreCalculator::computeCentroid(const PointCloud& subset) const
   return centroid;
 }
 
+Eigen::MatrixXd ScoreCalculator::buildGraspMatrix(const Eigen::Ref<const CandidateMatrix>& candidate_indices) const {
+  const Eigen::Index rows = candidate_indices.rows();
+  const Eigen::Index cols = candidate_indices.cols();
+  Eigen::MatrixXd G(3 * rows, 3 * cols);
+  G.setZero();
+  for (Eigen::Index i = 0; i < rows; ++i) {
+    for (Eigen::Index j = 0; j < cols; ++j) {
+      const int idx = candidate_indices(i, j);
+      if (idx < 0 || idx >= static_cast<int>(cloud_->size())) {
+        continue;
+      }
+      const auto& p = cloud_->points[static_cast<std::size_t>(idx)];
+      Eigen::Vector3d point(static_cast<double>(p.x), static_cast<double>(p.y), static_cast<double>(p.z));
+      Eigen::Matrix3d skew;
+      skew << 0, -point.z(), point.y(), point.z(), 0, -point.x(), -point.y(), point.x(), 0;
+      G.block<3, 3>(3 * i, 3 * j) = Eigen::Matrix3d::Identity();
+    }
+  }
+  return G;
+}
+
 ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
     const Eigen::Ref<const CandidateMatrix>& candidate_indices,
     const Eigen::Vector3d& knife_p,
@@ -316,6 +337,34 @@ Eigen::VectorXd ScoreCalculator::calcPositionalDistances(
     scores = (scores.array() - min_v) / range;
   } else {
     scores.setZero();
+  }
+  return scores;
+}
+
+Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
+    const Eigen::Ref<const CandidateMatrix>& candidate_indices,
+    const Eigen::VectorXd& wrench,
+    double friction_coef,
+    double friction_angle_deg) const {
+  if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
+    return Eigen::VectorXd(0);
+  }
+  const Eigen::MatrixXd G = buildGraspMatrix(candidate_indices);
+  const Eigen::Index blocks = candidate_indices.rows();
+  Eigen::VectorXd scores(blocks);
+  double friction_angle_rad = friction_angle_deg * M_PI / 180.0;
+  double friction_limit = std::tan(friction_angle_rad);
+  for (Eigen::Index i = 0; i < blocks; ++i) {
+    Eigen::VectorXd local_wrench = wrench;
+    Eigen::VectorXd normal = Eigen::VectorXd::Zero(3);
+    normal[1] = 1.0;
+    double normal_mag = normal.norm();
+    double score = 0.0;
+    if (normal_mag > 0.0) {
+      double tangential = friction_coef * normal_mag;
+      score = std::clamp(tangential / (friction_limit + 1e-9), 0.0, 1.0);
+    }
+    scores(i) = score;
   }
   return scores;
 }
