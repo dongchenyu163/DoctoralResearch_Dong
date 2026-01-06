@@ -22,6 +22,14 @@ def extract_contact_surface(
     preprocess: PreprocessResult,
     recorder: TimingRecorder,
 ) -> ContactSurfaceResult:
+    """Compute contact faces used by fracture/friction integrals.
+
+    Steps (per spec §3.4):
+        1. Build dense proxy mesh (currently bbox placeholder) from Ω_low.
+        2. Intersect with knife mesh.
+        3. Filter faces by alignment with knife side plane to isolate contact surface.
+        4. Split connected components to recover Ω_c1, Ω_c2.
+    """
     with recorder.section("python/contact_surface_total"):
         dense_mesh = _build_dense_mesh(preprocess)
         knife_mesh = _build_knife_mesh()

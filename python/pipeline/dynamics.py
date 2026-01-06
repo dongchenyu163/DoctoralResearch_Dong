@@ -14,6 +14,17 @@ def compute_dynamics_scores(
     wrench: np.ndarray,
     config: Config,
 ) -> np.ndarray:
+    """Forward to Algorithm 4 implementation in C++.
+
+    Args:
+        runner: GeoFilterRunner exposing the shared ScoreCalculator.
+        candidate_matrix: Shape (K,F) candidates that survived Algorithms 2+3.
+        wrench: 6-vector knife wrench (force+torque). Large magnitude generally requires
+            more balanced forces, leading to lower scores if infeasible.
+        config: Supplies physics knobs:
+            - `physics.friction_coef` (μ). Increasing expands admissible tangential force.
+            - `physics.friction_cone.angle_deg` (deg). Wider cone also relaxes tangential bounds.
+    """
     if candidate_matrix.size == 0:
         return np.zeros((0,), dtype=np.float64)
     friction_coef = float(config.physics.get("friction_coef", 0.5))

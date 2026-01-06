@@ -38,7 +38,13 @@ class PreprocessResult:
 
 
 def load_point_cloud(config: Config, recorder: TimingRecorder) -> RawPointCloud:
-    """Load or synthesize a point cloud according to the config."""
+    """Load or synthesize Ω_high according to the config.
+
+    Args:
+        config.preprocess.point_cloud_path: File path. If absent, a synthetic cube of
+            `synthetic_point_count` points is generated.
+        recorder: emits IO instrumentation.
+    """
 
     preprocess_cfg = config.preprocess
     path_value = preprocess_cfg.get("point_cloud_path")
@@ -74,7 +80,17 @@ def load_point_cloud(config: Config, recorder: TimingRecorder) -> RawPointCloud:
 def preprocess_point_cloud(
     raw_cloud: RawPointCloud, config: Config, recorder: TimingRecorder
 ) -> PreprocessResult:
-    """Downsample and compute normals for the low-density cloud."""
+    """Downsample (Ω_low) and compute normals.
+
+    Args:
+        raw_cloud: Output of `load_point_cloud`.
+        config.preprocess:
+            - `downsample_num`: Target M. Larger values give more candidates but
+              increase Algorithm 2–4 cost roughly linearly (and combinatorially for C_M^N).
+            - `normal_estimation_radius`: Open3D ball radius for PCA normals. Increase for
+              smoother normals, decrease for sharp details.
+        recorder: instrumentation hooks.
+    """
 
     preprocess_cfg = config.preprocess
     downsample_target = int(preprocess_cfg.get("downsample_num", raw_cloud.points.shape[0]))
@@ -144,6 +160,12 @@ def _points_hash(points: np.ndarray) -> str:
 
 
 def _downsample_points(points: np.ndarray, target: int) -> np.ndarray:
+    """Binary-search voxel size so |points| ≈ target (Ω_low size).
+
+    Args:
+        points: Ω_high array (N×3).
+        target: Desired downsample_num. Smaller => faster rest of pipeline; larger => better accuracy.
+    """
     if target <= 0 or target >= points.shape[0]:
         return np.ascontiguousarray(points, dtype=np.float64)
 
@@ -195,6 +217,7 @@ def _downsample_points(points: np.ndarray, target: int) -> np.ndarray:
 
 
 def _estimate_normals(points: np.ndarray, search_radius: float, max_nn: int = 30) -> np.ndarray:
+    """Estimate normals via Open3D ball neighborhoods."""
     if points.size == 0:
         return np.zeros_like(points)
     cloud = _to_point_cloud(points)

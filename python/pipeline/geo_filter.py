@@ -21,7 +21,7 @@ from python.utils.config_loader import Config
 
 
 class GeoFilterRunner:
-    """High-level helper that coordinates ScoreCalculator usage."""
+    """High-level helper that coordinates ScoreCalculator usage for Algorithms 2–4."""
 
     def __init__(self, config: Config):
         self.config = config
@@ -39,6 +39,12 @@ class GeoFilterRunner:
         self._calculator.set_geo_filter_ratio(geo_ratio)
 
     def set_point_cloud(self, preprocess_result: PreprocessResult) -> None:
+        """Pass Ω_low (points + normals) to C++.
+
+        Args:
+            preprocess_result: Contains `points_low` (M×3) and `normals_low` (M×3). Increasing
+                M increases GeoFilter run time roughly linearly; ensure it matches downsample_num.
+        """
         self._calculator.set_point_cloud(preprocess_result.points_low, preprocess_result.normals_low)
 
     def run(
@@ -47,6 +53,13 @@ class GeoFilterRunner:
         candidate_matrix: np.ndarray,
         recorder: TimingRecorder,
     ) -> np.ndarray:
+        """Algorithm 2: apply Ωg mask and C++ geo filters.
+
+        Args:
+            valid_indices: Ωg result with thresholds (table/knife). Tightening clearances reduces survivors.
+            candidate_matrix: Shape (P,F) from build_all_combinations.
+            recorder: Timing instrumentation.
+        """
         filtered_candidates = _mask_candidates(candidate_matrix, valid_indices.indices)
         knife_position = np.zeros(3, dtype=np.float64)
         knife_normal = np.array([0.0, 0.0, 1.0], dtype=np.float64)
@@ -62,6 +75,7 @@ class GeoFilterRunner:
         knife_position: np.ndarray,
         knife_normal: np.ndarray,
     ) -> np.ndarray:
+        """Algorithm 3: E_pdir; returns vector of size len(candidate_matrix)."""
         if candidate_matrix.size == 0:
             return np.zeros((0,), dtype=np.float64)
         scores = self._calculator.calc_positional_scores(candidate_matrix, knife_position, knife_normal)
@@ -73,6 +87,7 @@ class GeoFilterRunner:
         knife_position: np.ndarray,
         knife_normal: np.ndarray,
     ) -> np.ndarray:
+        """Algorithm 3: E_pdis normalized per timestep."""
         if candidate_matrix.size == 0:
             return np.zeros((0,), dtype=np.float64)
         scores = self._calculator.calc_positional_distances(candidate_matrix, knife_position, knife_normal)

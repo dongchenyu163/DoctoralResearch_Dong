@@ -21,6 +21,17 @@ class TrajectoryNode:
 def build_test_trajectory(
     preprocess: PreprocessResult, config: Config, recorder: TimingRecorder
 ) -> List[TrajectoryNode]:
+    """Construct Algorithm 1 test trajectory per reference offsets.
+
+    Args:
+        preprocess: Provides Ω_low bounding box center for placement.
+        config:
+            - `trajectory.offsets`: List of 3D offsets relative to AABB center. Larger magnitudes
+              push the knife farther from the food.
+            - `trajectory.scalar_velocities`: Scalar speeds per segment; tuning affects
+              Algorithm 1 velocity logs only (currently not fed into scoring).
+        recorder: Records the build section.
+    """
     points = preprocess.points_low
     if points.size == 0:
         center = np.zeros(3, dtype=np.float64)

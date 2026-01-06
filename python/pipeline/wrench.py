@@ -9,6 +9,19 @@ from python.utils.config_loader import Config
 
 
 def compute_wrench(surface: ContactSurfaceResult, config: Config) -> np.ndarray:
+    """Compute simplified fracture + friction wrench (Algorithm 4 input).
+
+    Args:
+        surface: ContactSurfaceResult listing faces per connected component.
+        config physics knobs:
+            - `pressure_distribution` (Pa). Larger values increase normal forces proportionally.
+            - `fracture_toughness` (N/m). Larger values yield bigger fracture force contributions.
+            - `friction_coef` μ. Controls tangential friction force magnitude.
+            - `planar_constraint` bool. When True, zeroes out non-planar wrench components (z force
+              + roll/pitch moments) per spec §3.4.
+    Returns:
+        6-vector `[Fx, Fy, Fz, Tx, Ty, Tz]`.
+    """
     pressure = float(config.physics.get("pressure_distribution", 1000.0))
     friction_coef = float(config.physics.get("friction_coef", 0.5))
     fracture_toughness = float(config.physics.get("fracture_toughness", 500.0))

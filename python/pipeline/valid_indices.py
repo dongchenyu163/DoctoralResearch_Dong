@@ -21,7 +21,16 @@ class ValidIndicesResult:
 
 
 def compute_valid_indices(points_low: np.ndarray, config: Config, recorder: TimingRecorder) -> ValidIndicesResult:
-    """Compute the valid index set based on table and knife constraints."""
+    """Compute Ωg mask for Algorithm 1 based on table and knife clearances.
+
+    Args:
+        points_low: Shape (M, 3) array for Ω_low.
+        config: Supplies thresholds:
+            - `environment.table_z` (base table plane height).
+            - `search.table_clearance` (increase to demand higher finger positions).
+            - `knife.height` and `search.knife_clearance` (decrease to allow closer to blade).
+        recorder: Emits instrumentation for table/knife filters.
+    """
 
     if points_low.ndim != 2 or points_low.shape[1] != 3:
         raise ValueError("points_low must be shaped (N, 3)")

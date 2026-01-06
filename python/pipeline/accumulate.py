@@ -15,7 +15,14 @@ _COMBINATION_CACHE: Dict[Tuple[int, int], np.ndarray] = {}
 
 
 def build_all_combinations(point_count: int, finger_count: int, recorder: TimingRecorder) -> np.ndarray:
-    """Build (and cache) the \(C_M^N\) index matrix."""
+    """Build (and cache) the \(C_M^N\) index matrix.
+
+    Args:
+        point_count: Total M points in Ω_low. Larger values explode \(C_M^N\) combinatorially.
+        finger_count: Finger count N used in Algorithm 1 (typically 2-3). Increasing this
+            multiplies candidate rows dramatically, so keep it small.
+        recorder: Timing recorder for instrumentation sections.
+    """
 
     if finger_count <= 0:
         raise ValueError("finger_count must be positive")
@@ -36,7 +43,17 @@ def build_all_combinations(point_count: int, finger_count: int, recorder: Timing
 
 @dataclass
 class ScoreAccumulator:
-    """Track per-candidate cumulative scores and elimination state."""
+    """Track per-candidate cumulative scores and elimination state.
+
+    Attributes:
+        combination_matrix: Shape (P, F) index matrix (P=|C_M^F|, F fingers).
+        total_scores: Running Σ(S_pos + S_dyn) per combination.
+        positional_scores: Running Σ(S_pos) only, to debug Algorithm 3.
+        dynamic_scores: Running Σ(S_dyn) only, to debug Algorithm 4.
+        hit_counts: Number of timesteps the candidate survived until accumulation.
+        active_mask: Whether the candidate remains eligible (Algorithm 1 lines 10-12).
+        eliminated_step/reason: Bookkeeping for diagnostics.
+    """
 
     combination_matrix: np.ndarray
     total_scores: np.ndarray = field(init=False)

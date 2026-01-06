@@ -1,4 +1,11 @@
-"""Pipeline implementation that wires together preprocessing, scoring, and accumulation."""
+"""Full Algorithm 1 integration loop.
+
+- PREPARE_DATA / lines 1-4: `load_point_cloud` + `preprocess_point_cloud`
+- FILTER_BY_GEO_SCORE / Algorithm 2: `GeoFilterRunner.run`
+- CAL_POSITIONAL_SCORE / Algorithm 3: `calc_positional_*`
+- CAL_KNIFE_FORCE + CAL_DYNAMICS_SCORE / Algorithm 4: `compute_wrench` + `calc_dynamics_scores`
+- Score accumulation + elimination mirrors Algorithm 1 lines 10-18.
+"""
 
 from __future__ import annotations
 
@@ -19,7 +26,12 @@ from python.utils.config_loader import Config
 
 
 def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
-    """Execute the integrated holding-point search pipeline."""
+    """Execute Algorithm 1 end-to-end and return summarized diagnostics.
+
+    Args:
+        config: Parsed JSON config controlling thresholds/weights.
+        recorder: Timing recorder that emits per-section instrumentation.
+    """
     raw_cloud: RawPointCloud = load_point_cloud(config, recorder)
     preprocess_result: PreprocessResult = preprocess_point_cloud(raw_cloud, config, recorder)
 
@@ -44,6 +56,7 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
         "total_combinations": int(combination_matrix.shape[0]),
     }
 
+    # Knife wrench (Algorithm 4 pre-step) extracted once for the current dataset.
     contact_surface: ContactSurfaceResult = extract_contact_surface(preprocess_result, recorder)
     with recorder.section("python/wrench_compute"):
         wrench = compute_wrench(contact_surface, config)
@@ -60,6 +73,7 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
 
     with recorder.section("python/trajectory_loop"):
         for step_idx, node in enumerate(trajectory_nodes):
+            # PREPARE_DATA line 4: recompute Ωg for each timestep.
             valid_result = compute_valid_indices(preprocess_result.points_low, config, recorder)
             if valid_summary is None:
                 valid_summary = {
@@ -74,6 +88,7 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
             if active_ids.size == 0:
                 break
 
+            # Mask out candidates that violate current Ωg.
             active_candidates = combination_matrix[active_ids]
             valid_mask = _valid_row_mask(active_candidates, valid_result.indices)
             valid_ids = active_ids[valid_mask]
@@ -100,6 +115,7 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
                     timestep_reports.append(step_report)
                 continue
 
+            # Algorithm 2: Geometry filter (Table 1 section Ωg).
             filtered_candidates = geo_filter.run(valid_result, valid_candidates, recorder)
             candidate_lookup = _build_row_lookup(valid_candidates, valid_ids)
             filtered_ids = _rows_to_ids(filtered_candidates, candidate_lookup)
@@ -115,9 +131,11 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
                     timestep_reports.append(step_report)
                 continue
 
+            # Algorithm 3: positional scores (direction + lever arm terms).
             positional_scores = geo_filter.calc_positional_scores(filtered_candidates, knife_position, knife_normal)
             positional_distances = geo_filter.calc_positional_distances(filtered_candidates, knife_position, knife_normal)
             pos_combined = w_pdir * positional_scores + w_pdis * positional_distances
+            # Algorithm 4: dynamics score based on wrench equilibrium.
             dynamics_scores = compute_dynamics_scores(geo_filter, filtered_candidates, wrench, config)
 
             with recorder.section("python/accumulate_scores"):
@@ -179,6 +197,12 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
 
 
 def _valid_row_mask(candidate_matrix: np.ndarray, valid_indices: np.ndarray) -> np.ndarray:
+    """Return boolean mask for rows whose every finger index ∈ Ωg.
+
+    Args:
+        candidate_matrix: Shape (K, F) matrix of finger index combinations.
+        valid_indices: 1-D array of Ωg indices (monotonic but not necessarily contiguous).
+    """
     if candidate_matrix.size == 0 or candidate_matrix.shape[0] == 0:
         return np.zeros(candidate_matrix.shape[0], dtype=bool)
     if valid_indices.size == 0:
@@ -188,6 +212,7 @@ def _valid_row_mask(candidate_matrix: np.ndarray, valid_indices: np.ndarray) -> 
 
 
 def _build_row_lookup(rows: np.ndarray, ids: np.ndarray) -> Dict[Tuple[int, ...], int]:
+    """Map each finger combination (tuple) back to its global candidate id."""
     if rows.size == 0 or ids.size == 0:
         return {}
     lookup: Dict[Tuple[int, ...], int] = {}
@@ -197,6 +222,7 @@ def _build_row_lookup(rows: np.ndarray, ids: np.ndarray) -> Dict[Tuple[int, ...]
 
 
 def _rows_to_ids(rows: np.ndarray, lookup: Dict[Tuple[int, ...], int]) -> np.ndarray:
+    """Resolve locally filtered rows back into absolute candidate ids."""
     if rows.size == 0:
         return np.empty((0,), dtype=np.int64)
     ids = np.empty(rows.shape[0], dtype=np.int64)
@@ -208,6 +234,7 @@ def _rows_to_ids(rows: np.ndarray, lookup: Dict[Tuple[int, ...], int]) -> np.nda
 
 
 def _build_candidate_summary(index: int, accumulator: ScoreAccumulator, preprocess: PreprocessResult) -> Dict[str, object]:
+    """Assemble reporting payload for a winning candidate."""
     combo = accumulator.combination_matrix[index]
     points = preprocess.points_low[combo] if preprocess.points_low.size else np.empty((0, 3))
     return {
