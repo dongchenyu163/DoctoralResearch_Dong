@@ -102,6 +102,8 @@ def run_pipeline(
     w_pdir = float(pos_weights.get("w_pdir", 1.0))
     w_pdis = float(pos_weights.get("w_pdis", 1.0))
 
+    if pc_logger and pc_logger.enabled_for("omega_high") and preprocess_result.points_high.size:
+        pc_logger.save_point_cloud("omega_high", -1, preprocess_result.points_high)
     log_boxed_heading(LOGGER, "3", "TRAJECTORY LOOP / 多阶段计算")
     with recorder.section("python/trajectory_loop"):
         for step_idx, node in enumerate(trajectory_nodes):
@@ -109,11 +111,13 @@ def run_pipeline(
             knife_position = node.pose[:3, 3]
             knife_normal = node.pose[:3, 2]
             knife_instance = knife_model.instantiate(node.pose)
-            if pc_logger and preprocess_result.points_high.size:
-                if preprocess_result.points_high.size == 0:
-                    logging.getLogger("pipeline.debug_pc").error("omega_high stage=%d has zero points", step_idx)
+            if pc_logger and pc_logger.enabled_for("knife_mesh"):
+                pc_logger.save_mesh("knife_mesh", step_idx, knife_instance.mesh)
+            if pc_logger and pc_logger.enabled_for("food_mesh"):
+                if preprocess_result.food_mesh is None:
+                    logging.getLogger("pipeline.debug_pc").error("food_mesh missing at step %d", step_idx)
                 else:
-                    pc_logger.save_point_cloud("omega_high", step_idx, preprocess_result.points_high)
+                    pc_logger.save_mesh("food_mesh", step_idx, preprocess_result.food_mesh)
             # PREPARE_DATA line 4: recompute Ωg for each timestep using knife plane.
             valid_result = compute_valid_indices(preprocess_result.points_low, config, recorder, knife_instance)
             VALID_LOGGER.info(
@@ -132,6 +136,8 @@ def run_pipeline(
                 valid_result.passed_penetration_plane,
                 valid_result.plane_tolerance,
             )
+            if pc_logger and pc_logger.enabled_for("omega_g") and valid_result.indices.size:
+                pc_logger.save_point_cloud("omega_g", step_idx, preprocess_result.points_low[valid_result.indices])
             if valid_summary is None:
                 valid_summary = {
                     "count": int(valid_result.indices.size),
@@ -176,6 +182,20 @@ def run_pipeline(
 
             log_boxed_heading(CONTACT_LOGGER, f"3.{step_idx + 1}.1", "Contact Surface + Wrench")
             contact_surface: ContactSurfaceResult = extract_contact_surface(preprocess_result, recorder, knife_instance)
+            if pc_logger:
+                if pc_logger.enabled_for("contact_faces"):
+                    contact_points = _flatten_contact_faces(contact_surface.faces)
+                    omega_points = preprocess_result.points_low[valid_result.indices] if valid_result.indices.size else np.empty((0, 3))
+                    combined_points, combined_colors = _combine_points_for_debug(omega_points, contact_points)
+                    pc_logger.save_point_cloud("contact_faces", step_idx, combined_points, combined_colors)
+                if pc_logger.enabled_for("knife_food_intersection") and contact_surface.mesh is not None:
+                    pc_logger.save_mesh("knife_food_intersection", step_idx, contact_surface.mesh)
+                for side_idx, face_block in enumerate(contact_surface.faces):
+                    stage_name = f"contact_mesh_side{side_idx}"
+                    if pc_logger.enabled_for(stage_name):
+                        mesh = _faces_to_trimesh(face_block)
+                        if mesh is not None:
+                            pc_logger.save_mesh(stage_name, step_idx, mesh)
             with recorder.section("python/wrench_compute"):
                 wrench = compute_wrench(contact_surface, config)
             last_contact_metadata = dict(contact_surface.metadata)
@@ -187,30 +207,6 @@ def run_pipeline(
                 contact_surface.metadata.get("components"),
             )
             CONTACT_LOGGER.debug("Step %d contact metadata=%s", step_idx, contact_surface.metadata)
-            if pc_logger and pc_logger.enabled_for("knife_mesh"):
-                pc_logger.save_mesh("knife_mesh", step_idx, knife_instance.mesh)
-            if pc_logger and pc_logger.enabled_for("food_mesh"):
-                if preprocess_result.food_mesh is None:
-                    logging.getLogger("pipeline.debug_pc").error("food_mesh missing at step %d", step_idx)
-                else:
-                    pc_logger.save_mesh("food_mesh", step_idx, preprocess_result.food_mesh)
-            if pc_logger and pc_logger.enabled_for("contact_faces"):
-                contact_points = _flatten_contact_faces(contact_surface.faces)
-                omega_points = preprocess_result.points_low[valid_result.indices] if valid_result.indices.size else np.empty((0, 3))
-                combined_points, combined_colors = _combine_points_for_debug(omega_points, contact_points)
-                pc_logger.save_point_cloud("contact_faces", step_idx, combined_points, combined_colors)
-            if pc_logger and pc_logger.enabled_for("knife_food_intersection") and contact_surface.mesh is not None:
-                pc_logger.save_mesh("knife_food_intersection", step_idx, contact_surface.mesh)
-            if pc_logger:
-                for side_idx, face_block in enumerate(contact_surface.faces):
-                    stage_name = f"contact_mesh_side{side_idx}"
-                    if not pc_logger.enabled_for(stage_name):
-                        continue
-                    mesh = _faces_to_trimesh(face_block)
-                    if mesh is not None:
-                        pc_logger.save_mesh(stage_name, step_idx, mesh)
-            if pc_logger and pc_logger.enabled_for("omega_g") and valid_result.indices.size:
-                pc_logger.save_point_cloud("omega_g", step_idx, preprocess_result.points_low[valid_result.indices])
 
             # Algorithm 2: Geometry filter (Table 1 section Ωg).
             log_boxed_heading(SCORES_LOGGER, f"3.{step_idx + 1}.2", "GeoFilter + Scores")

@@ -25,9 +25,20 @@ def _relative_path(pathname: str) -> str:
 class _ConsoleFormatter(logging.Formatter):
     """Formatter that uses compact [MMDDhhmmss_mmm] timestamps."""
 
+    COLORS = {
+        "WARNING": "\033[33m",  # yellow
+        "ERROR": "\033[31m",  # red
+        "CRITICAL": "\033[31m",
+    }
+    RESET = "\033[0m"
+
     def format(self, record: logging.LogRecord) -> str:
         record.custom_time = self.formatTime(record)  # type: ignore[attr-defined]
-        return f"[{record.custom_time}] {record.name} {record.levelname}: {record.getMessage()} :: {record.funcName}"
+        base = f"[{record.custom_time}] {record.name} {record.levelname}: {record.getMessage()} :: {record.funcName}"
+        color = self.COLORS.get(record.levelname, "")
+        if color:
+            return f"{color}{base}{self.RESET}"
+        return base
 
     def formatTime(self, record: logging.LogRecord, datefmt: Optional[str] = None) -> str:
         dt = datetime.fromtimestamp(record.created, tz=timezone.utc).astimezone()
