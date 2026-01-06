@@ -11,6 +11,7 @@ from python.utils.config_loader import Config
 def compute_wrench(surface: ContactSurfaceResult, config: Config) -> np.ndarray:
     pressure = float(config.physics.get("pressure_distribution", 1000.0))
     friction_coef = float(config.physics.get("friction_coef", 0.5))
+    fracture_toughness = float(config.physics.get("fracture_toughness", 500.0))
     planar_only = bool(config.physics.get("planar_constraint", True))
 
     total_force = np.zeros(3, dtype=np.float64)
@@ -25,15 +26,15 @@ def compute_wrench(surface: ContactSurfaceResult, config: Config) -> np.ndarray:
                 continue
             normal = normal_vec / (np.linalg.norm(normal_vec) + 1e-12)
             centroid = (a + b + c) / 3.0
+            fracture_force = fracture_toughness * area * normal
             normal_force = pressure * area * normal
             tangent = np.cross(normal, np.array([0.0, 0.0, 1.0]))
             if np.linalg.norm(tangent) < 1e-9:
                 tangent = np.cross(normal, np.array([0.0, 1.0, 0.0]))
             tangent = tangent / (np.linalg.norm(tangent) + 1e-12)
-            friction_force = friction_coef * pressure * area * tangent
-            elemental_force = normal_force + friction_force
-            total_force += elemental_force
-            total_torque += np.cross(centroid, elemental_force)
+            friction_force = friction_coef * np.linalg.norm(normal_force) * tangent
+            total_force += fracture_force + friction_force
+            total_torque += np.cross(centroid, fracture_force) + np.cross(centroid, friction_force)
 
     wrench = np.zeros(6, dtype=np.float64)
     wrench[:3] = total_force

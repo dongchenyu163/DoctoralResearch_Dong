@@ -29,6 +29,22 @@ class WrenchTests(unittest.TestCase):
         self.assertAlmostEqual(wrench[3], 0.0)
         self.assertAlmostEqual(wrench[4], 0.0)
 
+    def test_friction_contribution_changes_force(self) -> None:
+        base_config = make_config({"physics": {"planar_constraint": False}})
+        faces = [
+            np.array(
+                [
+                    [[0.0, 0.0, 0.0], [0.01, 0.0, 0.0], [0.0, 0.01, 0.0]],
+                ]
+            )
+        ]
+        surface = ContactSurfaceResult(faces=faces, metadata={})
+        config_zero = make_config({"physics": {"friction_coef": 0.0, "planar_constraint": False}})
+        config_high = make_config({"physics": {"friction_coef": 1.0, "planar_constraint": False}})
+        wrench_zero = compute_wrench(surface, config_zero)
+        wrench_high = compute_wrench(surface, config_high)
+        self.assertTrue(np.linalg.norm(wrench_high[:3]) > np.linalg.norm(wrench_zero[:3]))
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
