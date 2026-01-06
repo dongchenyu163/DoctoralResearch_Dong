@@ -41,12 +41,7 @@ class KnifeInstance:
         center = self.center_plane
         pos_side = float(np.dot(self.positive_plane.point - center.point, center.normal))
         neg_side = float(np.dot(self.negative_plane.point - center.point, center.normal))
-        plane = self.positive_plane if pos_side < neg_side else self.negative_plane
-        normal = plane.normal
-        if normal[1] < 0:
-            normal = -normal
-        # Project to pure +Y to align with Omega_g clipping convention.
-        return PlaneInstance(point=plane.point, normal=np.array([0.0, 1.0, 0.0], dtype=np.float64))
+        return self.positive_plane if pos_side < neg_side else self.negative_plane
 
 
 class KnifeModel:
@@ -127,9 +122,8 @@ def _create_wedge_mesh(length: float, height: float, edge_angle_deg: float) -> T
     center_plane = PlaneInstance(point=np.array([0.0, 0.0, height * 0.5], dtype=np.float64), normal=np.array([0.0, 1.0, 0.0], dtype=np.float64))
     positive_plane = _plane_from_points(vertices[0], vertices[1], vertices[4])
     negative_plane = _plane_from_points(vertices[0], vertices[2], vertices[5])
-    target_normal = np.array([0.0, 1.0, 0.0], dtype=np.float64)
-    _ensure_normal_direction(positive_plane, target_normal)
-    _ensure_normal_direction(negative_plane, target_normal)
+    _ensure_normal_direction(positive_plane, np.array([0.0, 1.0, 0.0], dtype=np.float64))
+    _ensure_normal_direction(negative_plane, np.array([0.0, -1.0, 0.0], dtype=np.float64))
     return mesh, (center_plane, positive_plane, negative_plane)
 
 

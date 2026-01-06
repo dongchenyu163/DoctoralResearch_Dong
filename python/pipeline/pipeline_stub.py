@@ -118,6 +118,47 @@ def run_pipeline(
                     logging.getLogger("pipeline.debug_pc").error("food_mesh missing at step %d", step_idx)
                 else:
                     pc_logger.save_mesh("food_mesh", step_idx, preprocess_result.food_mesh)
+            # PREPARE_DATA line 4: recompute Ωg for each timestep using knife plane.
+            valid_result = compute_valid_indices(preprocess_result.points_low, config, recorder, knife_instance)
+            VALID_LOGGER.info(
+                "Step %d Ωg count=%d thresholds(table>=%.4f knife<=%.4f)",
+                step_idx,
+                valid_result.indices.size,
+                valid_result.table_threshold,
+                valid_result.knife_threshold,
+            )
+            VALID_LOGGER.debug(
+                "Step %d table_pass=%d knife_pass=%d center_pass=%d slice_pass=%d plane_tol=%.5f",
+                step_idx,
+                valid_result.passed_table,
+                valid_result.passed_knife,
+                valid_result.passed_center_plane,
+                valid_result.passed_penetration_plane,
+                valid_result.plane_tolerance,
+            )
+            if pc_logger and pc_logger.enabled_for("omega_g") and valid_result.indices.size:
+                pc_logger.save_point_cloud("omega_g", step_idx, preprocess_result.points_low[valid_result.indices])
+            if valid_result.indices.size == 0:
+                VALID_LOGGER.error(
+                    "Step %d Ωg empty after filters (table=%d knife=%d center=%d slice=%d)",
+                    step_idx,
+                    valid_result.passed_table,
+                    valid_result.passed_knife,
+                    valid_result.passed_center_plane,
+                    valid_result.passed_penetration_plane,
+                )
+            if valid_summary is None:
+                valid_summary = {
+                    "count": int(valid_result.indices.size),
+                    "table_threshold": valid_result.table_threshold,
+                    "knife_threshold": valid_result.knife_threshold,
+                    "passed_table": valid_result.passed_table,
+                    "passed_knife": valid_result.passed_knife,
+                    "passed_center_plane": valid_result.passed_center_plane,
+                    "passed_penetration_plane": valid_result.passed_penetration_plane,
+                    "plane_tolerance": valid_result.plane_tolerance,
+                }
+
             active_ids = accumulator.active_ids()
             if active_ids.size == 0:
                 break
@@ -156,6 +197,11 @@ def run_pipeline(
                 if pc_logger.enabled_for("boolean_knife_mesh"):
                     pc_logger.save_mesh("boolean_knife_mesh", step_idx, knife_instance.mesh)
             if pc_logger:
+                if pc_logger.enabled_for("contact_faces"):
+                    contact_points = _flatten_contact_faces(contact_surface.faces)
+                    omega_points = preprocess_result.points_low[valid_result.indices] if valid_result.indices.size else np.empty((0, 3))
+                    combined_points, combined_colors = _combine_points_for_debug(omega_points, contact_points)
+                    pc_logger.save_point_cloud("contact_faces", step_idx, combined_points, combined_colors)
                 if pc_logger.enabled_for("knife_food_intersection") and contact_surface.mesh is not None:
                     pc_logger.save_mesh("knife_food_intersection", step_idx, contact_surface.mesh)
                 for side_idx, face_block in enumerate(contact_surface.faces):
@@ -180,52 +226,6 @@ def run_pipeline(
                     CONTACT_LOGGER.error("Step %d contact side %d empty", step_idx, side_idx)
                 else:
                     CONTACT_LOGGER.info("Step %d contact side %d triangles=%d", step_idx, side_idx, int(count))
-
-            # PREPARE_DATA line 4: recompute Ωg after contact evaluation.
-            valid_result = compute_valid_indices(preprocess_result.points_low, config, recorder, knife_instance)
-            VALID_LOGGER.info(
-                "Step %d Ωg count=%d thresholds(table>=%.4f knife<=%.4f)",
-                step_idx,
-                valid_result.indices.size,
-                valid_result.table_threshold,
-                valid_result.knife_threshold,
-            )
-            VALID_LOGGER.debug(
-                "Step %d table_pass=%d knife_pass=%d center_pass=%d slice_pass=%d plane_tol=%.5f",
-                step_idx,
-                valid_result.passed_table,
-                valid_result.passed_knife,
-                valid_result.passed_center_plane,
-                valid_result.passed_penetration_plane,
-                valid_result.plane_tolerance,
-            )
-            if pc_logger and pc_logger.enabled_for("omega_g") and valid_result.indices.size:
-                pc_logger.save_point_cloud("omega_g", step_idx, preprocess_result.points_low[valid_result.indices])
-            if pc_logger and pc_logger.enabled_for("contact_faces"):
-                contact_points = _flatten_contact_faces(contact_surface.faces)
-                omega_points = preprocess_result.points_low[valid_result.indices] if valid_result.indices.size else np.empty((0, 3))
-                combined_points, combined_colors = _combine_points_for_debug(omega_points, contact_points)
-                pc_logger.save_point_cloud("contact_faces", step_idx, combined_points, combined_colors)
-            if valid_result.indices.size == 0:
-                VALID_LOGGER.error(
-                    "Step %d Ωg empty after filters (table=%d knife=%d center=%d slice=%d)",
-                    step_idx,
-                    valid_result.passed_table,
-                    valid_result.passed_knife,
-                    valid_result.passed_center_plane,
-                    valid_result.passed_penetration_plane,
-                )
-            if valid_summary is None:
-                valid_summary = {
-                    "count": int(valid_result.indices.size),
-                    "table_threshold": valid_result.table_threshold,
-                    "knife_threshold": valid_result.knife_threshold,
-                    "passed_table": valid_result.passed_table,
-                    "passed_knife": valid_result.passed_knife,
-                    "passed_center_plane": valid_result.passed_center_plane,
-                    "passed_penetration_plane": valid_result.passed_penetration_plane,
-                    "plane_tolerance": valid_result.plane_tolerance,
-                }
 
             # Algorithm 2: Geometry filter (Table 1 section Ωg).
             log_boxed_heading(SCORES_LOGGER, f"3.{step_idx + 1}.2", "GeoFilter + Scores")
