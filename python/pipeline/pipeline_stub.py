@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Dict, List
 
 from python.instrumentation.timing import TimingRecorder
+from python.pipeline.accumulate import build_all_combinations
 from python.pipeline.preprocess import PreprocessResult, RawPointCloud, load_point_cloud, preprocess_point_cloud
 from python.utils.config_loader import Config
 
@@ -22,6 +23,13 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
         "downsample_num": config.preprocess.get("downsample_num"),
         "downsampled_point_count": preprocess_result.downsampled_point_count,
         "normal_estimation_radius": config.preprocess.get("normal_estimation_radius"),
+    }
+
+    finger_count = int(config.search.get("finger_count", 2))
+    combination_matrix = build_all_combinations(preprocess_result.points_low.shape[0], finger_count, recorder)
+    combinations_summary = {
+        "finger_count": finger_count,
+        "total_combinations": int(combination_matrix.shape[0]),
     }
 
     with recorder.section("python/mesh_boolean"):
@@ -49,6 +57,7 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
         "message": "Pipeline skeleton executed; no geometry computed.",
         "dataset": dataset_info,
         "preprocess": preprocess_summary,
+        "combinations": combinations_summary,
         "contact_surface": mesh_boolean_summary,
         "timesteps": timestep_reports,
     }
