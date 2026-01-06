@@ -93,6 +93,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "synthetic_point_count": 512,
         "downsample_num": 100,
         "normal_estimation_radius": 0.01,
+        "high_res_voxel": 0.001,
         "mesh": {
             "enabled": True,
             "method": "greedy",

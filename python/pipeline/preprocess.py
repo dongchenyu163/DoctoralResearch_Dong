@@ -111,11 +111,13 @@ def preprocess_point_cloud(
     normal_radius = float(preprocess_cfg.get("normal_estimation_radius", 0.01))
 
     with recorder.section("python/preprocess_total"):
+        with recorder.section("python/high_res_downsample"):
+            high_res = _downsample_points(raw_cloud.points, target=0, voxel_size=float(preprocess_cfg.get("high_res_voxel", 0.001)))
         with recorder.section("python/downsample"):
-            downsampled = _downsample_points(raw_cloud.points, downsample_target)
+            downsampled = _downsample_points(high_res, downsample_target)
         with recorder.section("python/estimate_normals"):
             normals = _estimate_normals(downsampled, search_radius=normal_radius)
-        food_mesh = _build_food_mesh(raw_cloud.points, config)
+        food_mesh = _build_food_mesh(high_res, config)
 
     return PreprocessResult(
         source_path=raw_cloud.source_path,
@@ -123,7 +125,7 @@ def preprocess_point_cloud(
         downsampled_point_count=int(downsampled.shape[0]),
         points_low=downsampled,
         normals_low=normals,
-        points_high=np.ascontiguousarray(raw_cloud.points, dtype=np.float64),
+        points_high=high_res,
         food_mesh=food_mesh,
     )
 
@@ -176,13 +178,15 @@ def _points_hash(points: np.ndarray) -> str:
     return hashlib.sha1(view.tobytes()).hexdigest()
 
 
-def _downsample_points(points: np.ndarray, target: int) -> np.ndarray:
+def _downsample_points(points: np.ndarray, target: int, voxel_size: Optional[float] = None) -> np.ndarray:
     """Binary-search voxel size so |points| ≈ target (Ω_low size).
 
     Args:
         points: Ω_high array (N×3).
         target: Desired downsample_num. Smaller => faster rest of pipeline; larger => better accuracy.
     """
+    if target <= 0 and voxel_size is not None:
+        return _voxel_downsample(points, voxel_size)
     if target <= 0 or target >= points.shape[0]:
         return np.ascontiguousarray(points, dtype=np.float64)
 
@@ -231,6 +235,14 @@ def _downsample_points(points: np.ndarray, target: int) -> np.ndarray:
         fallback = np.ascontiguousarray(points[:deficit], dtype=np.float64)
         best_points = np.concatenate([best_points, fallback], axis=0)
     return np.ascontiguousarray(best_points, dtype=np.float64)
+
+
+def _voxel_downsample(points: np.ndarray, voxel_size: float) -> np.ndarray:
+    if o3d is None:
+        raise RuntimeError("open3d required for voxel downsample")
+    cloud = _to_point_cloud(points)
+    sampled = cloud.voxel_down_sample(max(voxel_size, 1e-5))
+    return np.asarray(sampled.points, dtype=np.float64)
 
 
 def _estimate_normals(points: np.ndarray, search_radius: float, max_nn: int = 30) -> np.ndarray:
