@@ -76,8 +76,8 @@
 
 ### **🔴 Phase 7: 验证与文档 (Validation)**
 
-* [ ] **P7-1**: 编写性能基准测试脚本 (Benchmark)  
-* [ ] **P7-2**: 完善项目文档 (README, Install Guide)
+* [x] **P7-1**: 编写性能基准测试脚本 (Benchmark)  
+* [x] **P7-2**: 完善项目文档 (README, Install Guide)
 
 ## **详细任务说明 (Detailed Task Breakdown)**
 
