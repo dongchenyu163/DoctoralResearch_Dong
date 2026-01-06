@@ -1,18 +1,23 @@
-"""Contact surface extraction using trimesh booleans."""
+"""Contact surface extraction using MLS-derived food mesh and knife planes."""
 
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import numpy as np
 import trimesh
 
 from python.instrumentation.timing import TimingRecorder
+from python.pipeline.knife_model import KnifeInstance, PlaneInstance
 from python.pipeline.preprocess import PreprocessResult
 
 LOGGER = logging.getLogger("pipeline.contact_surface")
+_BLENDER_PREFIX = "/home/cookteam/Documents/blender-4.5.3-linux-x64"
+if _BLENDER_PREFIX not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = f"{_BLENDER_PREFIX}:{os.environ.get('PATH', '')}"
 
 
 @dataclass
@@ -25,94 +30,70 @@ class ContactSurfaceResult:
 def extract_contact_surface(
     preprocess: PreprocessResult,
     recorder: TimingRecorder,
-    knife_pose: np.ndarray,
+    knife_instance: KnifeInstance,
+    normal_threshold: float = 0.9,
 ) -> ContactSurfaceResult:
-    """Compute contact faces used by fracture/friction integrals.
-
-    Steps (per spec §3.4):
-        1. Build dense proxy mesh (currently bbox placeholder) from Ω_low.
-        2. Intersect with knife mesh transformed by current pose.
-        3. Filter faces by alignment with knife side plane to isolate contact surface.
-        4. Split connected components to recover Ω_c1, Ω_c2.
-    """
-    LOGGER.debug("Extract contact surface pose translation=%s", knife_pose[:3, 3].tolist())
+    """Compute contact faces for Algorithm 4 based on current knife pose."""
+    base_mesh = preprocess.food_mesh or _build_dense_mesh(preprocess.points_low)
+    if base_mesh is None:
+        return ContactSurfaceResult(faces=[], metadata={"total_faces": 0.0, "components": 0.0}, mesh=None)
     with recorder.section("python/contact_surface_total"):
-        dense_mesh = _build_dense_mesh(preprocess)
-        knife_mesh = _build_knife_mesh(knife_pose)
         with recorder.section("python/mesh_boolean"):
             try:
-                intersection = trimesh.boolean.intersection([dense_mesh, knife_mesh])
-            except Exception:
-                intersection = dense_mesh.copy()
-        purified_faces = _filter_faces(intersection)
-        with recorder.section("python/contact_surface_purify"):
-            clusters = _split_connected_components(purified_faces)
+                intersection = trimesh.boolean.intersection([base_mesh, knife_instance.mesh])
+                if isinstance(intersection, (list, tuple)):
+                    intersection = trimesh.util.concatenate(intersection)
+            except Exception as exc:  # pragma: no cover - backend specific
+                LOGGER.warning("Mesh boolean failed (%s); returning empty contact surface", exc)
+                intersection = None
+        faces = _filter_faces_with_planes(
+            intersection,
+            knife_instance.center_plane,
+            [knife_instance.positive_plane, knife_instance.negative_plane],
+            normal_threshold,
+        )
+    total_faces = sum(face_group.shape[0] for face_group in faces)
     metadata = {
-        "total_faces": float(len(purified_faces)),
-        "components": float(len(clusters)),
+        "total_faces": float(total_faces),
+        "components": float(len([arr for arr in faces if arr.size])),
     }
     LOGGER.debug(
-        "Contact surface faces=%d components=%d dense_bounds=%s",
-        len(purified_faces),
-        len(clusters),
-        np.vstack([dense_mesh.bounds[0], dense_mesh.bounds[1]]).tolist(),
+        "Contact surface faces=%d components=%d bounds=%s",
+        int(metadata["total_faces"]),
+        int(metadata["components"]),
+        np.vstack([base_mesh.bounds[0], base_mesh.bounds[1]]).tolist(),
     )
-    return ContactSurfaceResult(faces=clusters, metadata=metadata, mesh=intersection)
+    return ContactSurfaceResult(faces=faces, metadata=metadata, mesh=intersection)
 
 
-def _build_dense_mesh(preprocess: PreprocessResult) -> trimesh.Trimesh:
-    # Placeholder: use bounding box as proxy
-    points = preprocess.points_low
+def _build_dense_mesh(points: np.ndarray) -> Optional[trimesh.Trimesh]:
     if points.size == 0:
-        points = np.array([[-0.05, -0.05, -0.05], [0.05, 0.05, 0.05]], dtype=np.float64)
+        return None
     mins = points.min(axis=0)
     maxs = points.max(axis=0)
-    box = trimesh.creation.box(bounds=np.vstack([mins, maxs]))
-    return box
+    return trimesh.creation.box(bounds=np.vstack([mins, maxs]))
 
 
-def _build_knife_mesh(knife_pose: np.ndarray) -> trimesh.Trimesh:
-    verts = np.array(
-        [
-            [0.0, -0.01, -0.1],
-            [0.0, 0.01, -0.1],
-            [0.2, 0.0, 0.1],
-        ]
-    )
-    faces = np.array([[0, 1, 2]])
-    mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
-    if knife_pose.shape == (4, 4):
-        mesh.apply_transform(knife_pose)
-    return mesh
-
-
-def _filter_faces(mesh: trimesh.Trimesh) -> List[np.ndarray]:
-    if mesh.is_empty:
-        return []
-    faces = []
+def _filter_faces_with_planes(
+    mesh: Optional[trimesh.Trimesh],
+    center_plane: PlaneInstance,
+    side_planes: List[PlaneInstance],
+    normal_threshold: float,
+) -> List[np.ndarray]:
+    if mesh is None or mesh.is_empty:
+        return [np.empty((0, 3, 3), dtype=np.float64), np.empty((0, 3, 3), dtype=np.float64)]
+    triangles = mesh.triangles
     normals = mesh.face_normals
-    for face, normal in zip(mesh.faces, normals):
-        if abs(normal[1]) >= 0.99:  # keep faces parallel to knife side plane
-            faces.append(mesh.vertices[face])
-    return faces
-
-
-def _split_connected_components(faces: List[np.ndarray]) -> List[np.ndarray]:
-    if not faces:
-        return []
-    components: List[np.ndarray] = []
-    current = []
-    last_centroid = None
-    for face in faces:
-        centroid = face.mean(axis=0)
-        if last_centroid is not None and np.linalg.norm(centroid - last_centroid) > 0.05:
-            components.append(np.array(current))
-            current = []
-        current.append(face)
-        last_centroid = centroid
-    if current:
-        components.append(np.array(current))
-    return components
+    centers = mesh.triangles_center
+    grouped: List[List[np.ndarray]] = [[], []]
+    for tri, normal, centroid in zip(triangles, normals, centers):
+        matches = [idx for idx, plane in enumerate(side_planes) if float(np.dot(normal, plane.normal)) >= normal_threshold]
+        if not matches:
+            continue
+        side_value = float(np.dot(centroid - center_plane.point, center_plane.normal))
+        bucket = 0 if side_value >= 0 else 1
+        grouped[bucket].append(tri)
+    return [np.asarray(group, dtype=np.float64) if group else np.empty((0, 3, 3), dtype=np.float64) for group in grouped]
 
 
 __all__ = ["ContactSurfaceResult", "extract_contact_surface"]

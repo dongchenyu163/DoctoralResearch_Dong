@@ -19,6 +19,7 @@ from python.pipeline.accumulate import ScoreAccumulator, build_all_combinations
 from python.pipeline.contact_surface import ContactSurfaceResult, extract_contact_surface
 from python.pipeline.dynamics import compute_dynamics_scores
 from python.pipeline.geo_filter import GeoFilterRunner
+from python.pipeline.knife_model import KnifeModel, build_knife_model
 from python.pipeline.preprocess import PreprocessResult, RawPointCloud, load_point_cloud, preprocess_point_cloud
 from python.pipeline.trajectory import TrajectoryNode, build_test_trajectory
 from python.pipeline.valid_indices import compute_valid_indices
@@ -59,6 +60,7 @@ def run_pipeline(
         preprocess_result.downsampled_point_count,
         config.preprocess.get("downsample_num"),
     )
+    knife_model = build_knife_model(config, preprocess_result.points_low)
 
     dataset_info = {
         "source": str(raw_cloud.source_path) if raw_cloud.source_path else "synthetic",
@@ -100,14 +102,9 @@ def run_pipeline(
             log_boxed_heading(LOGGER, f"3.{step_idx + 1}", f"Step {step_idx} Pose + Ωg 计算")
             knife_position = node.pose[:3, 3]
             knife_normal = node.pose[:3, 2]
+            knife_instance = knife_model.instantiate(node.pose)
             # PREPARE_DATA line 4: recompute Ωg for each timestep using knife plane.
-            valid_result = compute_valid_indices(
-                preprocess_result.points_low,
-                config,
-                recorder,
-                knife_position,
-                knife_normal,
-            )
+            valid_result = compute_valid_indices(preprocess_result.points_low, config, recorder, knife_instance)
             VALID_LOGGER.info(
                 "Step %d Ωg count=%d thresholds(table>=%.4f knife<=%.4f)",
                 step_idx,
@@ -116,11 +113,12 @@ def run_pipeline(
                 valid_result.knife_threshold,
             )
             VALID_LOGGER.debug(
-                "Step %d table_pass=%d knife_pass=%d plane_pass=%d plane_tol=%.5f",
+                "Step %d table_pass=%d knife_pass=%d center_pass=%d slice_pass=%d plane_tol=%.5f",
                 step_idx,
                 valid_result.passed_table,
                 valid_result.passed_knife,
-                valid_result.passed_plane,
+                valid_result.passed_center_plane,
+                valid_result.passed_penetration_plane,
                 valid_result.plane_tolerance,
             )
             if valid_summary is None:
@@ -130,7 +128,8 @@ def run_pipeline(
                     "knife_threshold": valid_result.knife_threshold,
                     "passed_table": valid_result.passed_table,
                     "passed_knife": valid_result.passed_knife,
-                    "passed_plane": valid_result.passed_plane,
+                    "passed_center_plane": valid_result.passed_center_plane,
+                    "passed_penetration_plane": valid_result.passed_penetration_plane,
                     "plane_tolerance": valid_result.plane_tolerance,
                 }
 
@@ -165,7 +164,7 @@ def run_pipeline(
                 continue
 
             log_boxed_heading(CONTACT_LOGGER, f"3.{step_idx + 1}.1", "Contact Surface + Wrench")
-            contact_surface: ContactSurfaceResult = extract_contact_surface(preprocess_result, recorder, node.pose)
+            contact_surface: ContactSurfaceResult = extract_contact_surface(preprocess_result, recorder, knife_instance)
             with recorder.section("python/wrench_compute"):
                 wrench = compute_wrench(contact_surface, config)
             last_contact_metadata = dict(contact_surface.metadata)
@@ -241,16 +240,17 @@ def run_pipeline(
 
     if valid_summary is None:
         # If no steps executed, fall back to static Ωg summary.
-        knife_position = np.zeros(3, dtype=np.float64)
-        knife_normal = np.array([0.0, 0.0, 1.0], dtype=np.float64)
-        valid_result = compute_valid_indices(preprocess_result.points_low, config, recorder, knife_position, knife_normal)
+        identity_pose = np.eye(4, dtype=np.float64)
+        knife_instance = knife_model.instantiate(identity_pose)
+        valid_result = compute_valid_indices(preprocess_result.points_low, config, recorder, knife_instance)
         valid_summary = {
             "count": int(valid_result.indices.size),
             "table_threshold": valid_result.table_threshold,
             "knife_threshold": valid_result.knife_threshold,
             "passed_table": valid_result.passed_table,
             "passed_knife": valid_result.passed_knife,
-            "passed_plane": valid_result.passed_plane,
+            "passed_center_plane": valid_result.passed_center_plane,
+            "passed_penetration_plane": valid_result.passed_penetration_plane,
             "plane_tolerance": valid_result.plane_tolerance,
         }
 

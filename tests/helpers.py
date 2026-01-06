@@ -28,6 +28,7 @@ def make_config(overrides: dict | None = None) -> Config:
     data = _merge_dict(DEFAULT_CONFIG, overrides or {})
     data["instrumentation"]["enable_timing"] = False
     data["instrumentation"]["enable_detailed_timing"] = False
+    data.setdefault("preprocess", {}).setdefault("mesh", {})["enabled"] = False
     return Config.from_dict(data)
 
 

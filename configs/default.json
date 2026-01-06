@@ -3,7 +3,12 @@
     "point_cloud_path": "/home/cookteam/Workspace/CPP_Program/python_force_calc_2026/tests/points.pcd",
     "synthetic_point_count": 512,
     "downsample_num": 100,
-    "normal_estimation_radius": 0.01
+    "normal_estimation_radius": 0.01,
+    "mesh": {
+      "enabled": true,
+      "mls_radius": 0.01,
+      "alpha": 0.02
+    }
   },
   "weights": {
     "geo_score": {
@@ -23,7 +28,9 @@
   },
   "knife": {
     "edge_angle_deg": 5.0,
-    "height": 0.1
+    "height": 0.1,
+    "length": 0.2,
+    "length_margin": 0.05
   },
   "physics": {
     "friction_coef": 0.5,
@@ -72,14 +79,15 @@
         "downsample": true,
         "estimate_normals": true,
         "trajectory_loop": true,
-        "trajectory_build": true,
-        "valid_indices": true,
-        "compute_valid_indices_total": true,
-        "valid_filter_table": true,
-        "valid_filter_knife": true,
-        "valid_filter_plane": true,
-        "mesh_boolean": true,
-        "contact_surface_purify": true,
+      "trajectory_build": true,
+      "valid_indices": true,
+      "compute_valid_indices_total": true,
+      "valid_filter_table": true,
+      "valid_filter_knife": true,
+      "valid_filter_center_plane": true,
+      "valid_filter_slice_plane": true,
+      "mesh_boolean": true,
+      "contact_surface_purify": true,
         "contact_surface_total": true,
         "wrench_compute": true,
         "accumulate_scores": true,

@@ -33,7 +33,8 @@ class GeoFilterRunnerTests(unittest.TestCase):
             knife_threshold=1.0,
             passed_table=2,
             passed_knife=2,
-            passed_plane=2,
+            passed_center_plane=2,
+            passed_penetration_plane=2,
             plane_tolerance=0.0,
         )
         candidate_matrix = np.array([[0, 1], [1, 2], [0, 2]], dtype=np.int32)
@@ -66,7 +67,8 @@ class GeoFilterRunnerTests(unittest.TestCase):
             knife_threshold=1.0,
             passed_table=3,
             passed_knife=3,
-            passed_plane=3,
+            passed_center_plane=3,
+            passed_penetration_plane=3,
             plane_tolerance=0.0,
         )
         candidate_matrix = np.array([[0, 1], [1, 2]], dtype=np.int32)
@@ -100,7 +102,8 @@ class GeoFilterRunnerTests(unittest.TestCase):
             knife_threshold=1.0,
             passed_table=3,
             passed_knife=3,
-            passed_plane=3,
+            passed_center_plane=3,
+            passed_penetration_plane=3,
             plane_tolerance=0.0,
         )
         candidate_matrix = np.array([[0, 1], [1, 2]], dtype=np.int32)

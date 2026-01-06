@@ -1,8 +1,12 @@
-"""Point cloud loading, downsampling, and normal estimation helpers."""
+"""Point cloud loading, downsampling, normal estimation, and mesh building."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import importlib
+import logging
+import os
+import sys
+from dataclasses import dataclass, field
 import hashlib
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -14,8 +18,15 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     o3d = None
 
+try:
+    import trimesh
+except ImportError:  # pragma: no cover - optional dependency
+    trimesh = None
+
 from python.instrumentation.timing import TimingRecorder
 from python.utils.config_loader import Config
+
+LOGGER = logging.getLogger("pipeline.preprocess")
 
 
 @dataclass
@@ -35,6 +46,8 @@ class PreprocessResult:
     downsampled_point_count: int
     points_low: np.ndarray
     normals_low: np.ndarray
+    points_high: np.ndarray = field(default_factory=lambda: np.empty((0, 3), dtype=np.float64))
+    food_mesh: Optional["trimesh.Trimesh"] = None
 
 
 def load_point_cloud(config: Config, recorder: TimingRecorder) -> RawPointCloud:
@@ -101,6 +114,7 @@ def preprocess_point_cloud(
             downsampled = _downsample_points(raw_cloud.points, downsample_target)
         with recorder.section("python/estimate_normals"):
             normals = _estimate_normals(downsampled, search_radius=normal_radius)
+        food_mesh = _build_food_mesh(raw_cloud.points, config)
 
     return PreprocessResult(
         source_path=raw_cloud.source_path,
@@ -108,6 +122,8 @@ def preprocess_point_cloud(
         downsampled_point_count=int(downsampled.shape[0]),
         points_low=downsampled,
         normals_low=normals,
+        points_high=np.ascontiguousarray(raw_cloud.points, dtype=np.float64),
+        food_mesh=food_mesh,
     )
 
 
@@ -227,3 +243,58 @@ def _estimate_normals(points: np.ndarray, search_radius: float, max_nn: int = 30
     if normals.shape[0] != points.shape[0]:
         raise RuntimeError("open3d failed to estimate normals")
     return normals
+
+
+def _build_food_mesh(points: np.ndarray, config: Config) -> Optional["trimesh.Trimesh"]:
+    """Generate dense food mesh using MLS smoothing on Ω_high."""
+    if points.size < 3:
+        return None
+    if o3d is None or trimesh is None:
+        LOGGER.warning("Skipping food mesh build (open3d or trimesh missing)")
+        return None
+    mesh_cfg = config.preprocess.get("mesh", {})
+    if not bool(mesh_cfg.get("enabled", True)):
+        return None
+    bbox = _to_point_cloud(points).get_axis_aligned_bounding_box()
+    extent = bbox.get_extent()
+    diag = float(np.linalg.norm(extent)) or 0.1
+    mls_radius = float(mesh_cfg.get("mls_radius", diag * 0.02))
+    alpha = float(mesh_cfg.get("alpha", diag * 0.05))
+    try:
+        smoothing = _load_mls_function()
+    except RuntimeError as exc:
+        LOGGER.warning("MLS smoothing unavailable: %s", exc)
+        return None
+    cloud = _to_point_cloud(points)
+    smoothed = smoothing(cloud, radius=mls_radius)
+    try:
+        mesh_o3d = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(smoothed, alpha)
+    except Exception as exc:  # pragma: no cover - depends on dataset
+        LOGGER.warning("Alpha-shape meshing failed (%s); falling back to ball pivot", exc)
+        radii = o3d.utility.DoubleVector([alpha, alpha * 1.5])
+        mesh_o3d = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(smoothed, radii)
+    mesh_o3d.compute_triangle_normals()
+    vertices = np.asarray(mesh_o3d.vertices, dtype=np.float64)
+    faces = np.asarray(mesh_o3d.triangles, dtype=np.int64)
+    if vertices.size == 0 or faces.size == 0:
+        LOGGER.warning("Generated mesh empty after MLS smoothing")
+        return None
+    return trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
+
+
+def _load_mls_function():
+    """Import MLS smoothing helper, retrying with NUMBA_DISABLE_JIT on failure."""
+    module_name = "algorithms.points_algo.mls_surface_smooth_numba"
+    try:
+        module = importlib.import_module(module_name)
+        return module.mls_smoothing_numba
+    except Exception as first_exc:  # pragma: no cover - depends on environment
+        os.environ.setdefault("NUMBA_DISABLE_JIT", "1")
+        if module_name in sys.modules:
+            del sys.modules[module_name]
+        try:
+            module = importlib.import_module(module_name)
+            LOGGER.warning("mls_smoothing_numba imported with NUMBA_DISABLE_JIT=1 due to %s", first_exc)
+            return module.mls_smoothing_numba
+        except Exception as final_exc:  # pragma: no cover
+            raise RuntimeError(f"Failed to import MLS smoothing helper: {final_exc}") from final_exc
