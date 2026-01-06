@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
+import sys
 from dataclasses import dataclass, field
 import hashlib
 from pathlib import Path
@@ -23,8 +25,6 @@ except ImportError:  # pragma: no cover - optional dependency
 
 from python.instrumentation.timing import TimingRecorder
 from python.utils.config_loader import Config
-
-os.environ.setdefault("NUMBA_DISABLE_JIT", "1")
 from python.utils import py_gpt
 
 LOGGER = logging.getLogger("pipeline.preprocess")
@@ -265,6 +265,10 @@ def _build_mesh_greedy(points: np.ndarray, method_cfg: Dict[str, object], config
     if o3d is None or trimesh is None:
         LOGGER.error("Cannot build food mesh (open3d or trimesh missing)")
         return None
+    mls_cfg = method_cfg.get("mls", {})
+    if bool(mls_cfg.get("enabled", False)):
+        radius = float(mls_cfg.get("radius", 0.01))
+        points = _apply_mls(points, radius)
     cloud = _to_point_cloud(points)
     normal_radius = float(method_cfg.get("normal_radius", config.preprocess.get("normal_estimation_radius", 0.01)))
     normal_max_nn = int(method_cfg.get("normal_max_nn", 60))
@@ -299,3 +303,36 @@ def _build_mesh_greedy(points: np.ndarray, method_cfg: Dict[str, object], config
         normal_max_nn,
     )
     return mesh
+
+
+def _apply_mls(points: np.ndarray, radius: float) -> np.ndarray:
+    try:
+        mls_fn = _load_mls_function()
+    except RuntimeError as exc:  # pragma: no cover - depends on env
+        LOGGER.error("MLS smoothing unavailable: %s", exc)
+        return points
+    try:
+        cloud = _to_point_cloud(points)
+        smoothed = mls_fn(cloud, radius=radius)
+        LOGGER.info("Applied MLS smoothing (radius=%.4f)", radius)
+        return np.asarray(smoothed.points, dtype=np.float64)
+    except Exception as exc:  # pragma: no cover
+        LOGGER.error("MLS smoothing failed (%s); fallback to raw points", exc)
+        return points
+
+
+def _load_mls_function():
+    module_name = "algorithms.points_algo.mls_surface_smooth_numba"
+    try:
+        module = importlib.import_module(module_name)
+        return module.mls_smoothing_numba
+    except Exception as first_exc:  # pragma: no cover
+        os.environ.setdefault("NUMBA_DISABLE_JIT", "1")
+        if module_name in sys.modules:
+            del sys.modules[module_name]
+        try:
+            module = importlib.import_module(module_name)
+            LOGGER.warning("Imported mls_smoothing_numba with NUMBA_DISABLE_JIT=1 due to %s", first_exc)
+            return module.mls_smoothing_numba
+        except Exception as final_exc:
+            raise RuntimeError(final_exc) from final_exc
