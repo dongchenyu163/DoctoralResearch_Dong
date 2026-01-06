@@ -5,7 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 from pathlib import Path
+
+sys.path.append("/home/cookteam/Workspace/CPP_Program/python_force_calc_2026")
 
 from python.instrumentation.timing import TimingRecorder
 from python.pipeline.pipeline_stub import run_pipeline
