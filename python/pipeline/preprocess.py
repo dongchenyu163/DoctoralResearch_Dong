@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 
 import numpy as np
 
@@ -81,7 +81,7 @@ def preprocess_point_cloud(
 
     with recorder.section("python/preprocess_total"):
         with recorder.section("python/downsample"):
-            downsampled = _downsample_points(raw_cloud.points, downsample_target, seed=config.seed)
+            downsampled = _downsample_points(raw_cloud.points, downsample_target)
         with recorder.section("python/estimate_normals"):
             normals = _estimate_normals(downsampled, search_radius=normal_radius)
 
@@ -97,14 +97,12 @@ def preprocess_point_cloud(
 def _load_points_from_file(path: Path) -> np.ndarray:
     suffix = path.suffix.lower()
     if suffix in {".ply", ".pcd"}:
-        if o3d is not None:
-            cloud = o3d.io.read_point_cloud(str(path))  # pragma: no cover - depends on optional data
-            if not cloud.has_points():
-                raise ValueError(f"Point cloud {path} is empty")
-            return np.asarray(cloud.points, dtype=np.float64)
-        if suffix == ".pcd":
-            return _load_pcd_ascii(path)
-        raise RuntimeError("open3d is required to load .ply/.pcd point clouds")
+        if o3d is None:
+            raise RuntimeError("open3d is required to load .ply/.pcd point clouds")
+        cloud = o3d.io.read_point_cloud(str(path))  # pragma: no cover - depends on optional data
+        if not cloud.has_points():
+            raise ValueError(f"Point cloud {path} is empty")
+        return np.asarray(cloud.points, dtype=np.float64)
     if suffix == ".npy":
         return np.load(path).astype(np.float64)
     if suffix == ".npz":
@@ -128,52 +126,43 @@ def _generate_synthetic_point_cloud(count: int) -> np.ndarray:
     return tiled[:count]
 
 
-def _load_pcd_ascii(path: Path) -> np.ndarray:
-    header_lines = 0
-    with path.open("r", encoding="utf-8") as f:
-        for header_lines, line in enumerate(f, start=1):
-            if line.strip().upper().startswith("DATA"):
-                break
-        else:
-            raise ValueError(f"{path} does not contain a DATA section")
-    data = np.loadtxt(path, skiprows=header_lines, dtype=np.float64, ndmin=2)
-    if data.shape[1] < 3:
-        raise ValueError(f"{path} contains fewer than 3 columns")
-    return np.ascontiguousarray(data[:, :3], dtype=np.float64)
+def _to_point_cloud(points: np.ndarray) -> "o3d.geometry.PointCloud":
+    if o3d is None:
+        raise RuntimeError("open3d must be installed for point cloud processing")
+    cloud = o3d.geometry.PointCloud()
+    cloud.points = o3d.utility.Vector3dVector(np.ascontiguousarray(points, dtype=np.float64))
+    return cloud
 
 
-def _downsample_points(points: np.ndarray, target: int, seed: Optional[int]) -> np.ndarray:
+def _downsample_points(points: np.ndarray, target: int) -> np.ndarray:
     if target <= 0 or target >= points.shape[0]:
         return np.ascontiguousarray(points, dtype=np.float64)
-    rng = np.random.default_rng(seed)
-    indices = rng.choice(points.shape[0], size=target, replace=False)
-    indices.sort()
-    return np.ascontiguousarray(points[indices], dtype=np.float64)
+    cloud = _to_point_cloud(points)
+    bbox = cloud.get_axis_aligned_bounding_box()
+    extent = bbox.get_extent()
+    diag = float(np.linalg.norm(extent))
+    voxel_size = diag / max(np.cbrt(target), 1.0)
+    voxel_size = max(voxel_size, 1e-4)
+    down_cloud = cloud.voxel_down_sample(voxel_size)
+    if len(down_cloud.points) == 0:
+        down_cloud = cloud
+    down_points = np.asarray(down_cloud.points, dtype=np.float64)
+    if down_points.shape[0] > target:
+        down_points = down_points[:target]
+    elif down_points.shape[0] < target:
+        deficit = target - down_points.shape[0]
+        fallback = np.ascontiguousarray(points[:deficit], dtype=np.float64)
+        down_points = np.concatenate([down_points, fallback], axis=0)
+    return np.ascontiguousarray(down_points, dtype=np.float64)
 
 
-def _estimate_normals(points: np.ndarray, search_radius: float, min_neighbors: int = 6) -> np.ndarray:
+def _estimate_normals(points: np.ndarray, search_radius: float, max_nn: int = 30) -> np.ndarray:
     if points.size == 0:
         return np.zeros_like(points)
-    normals = np.zeros_like(points)
-    radius_sq = max(search_radius, 1e-6) ** 2
-    for idx, point in enumerate(points):
-        offsets = points - point
-        dists = np.einsum("ij,ij->i", offsets, offsets)
-        neighbor_mask = (dists > 0.0) & (dists <= radius_sq)
-        neighbor_indices = np.nonzero(neighbor_mask)[0]
-        if neighbor_indices.size < min_neighbors:
-            neighbor_indices = np.argsort(dists)[1 : min_neighbors + 1]
-        neighborhood = offsets[neighbor_indices]
-        cov = neighborhood.T @ neighborhood
-        try:
-            _, _, vh = np.linalg.svd(cov, hermitian=True)
-            normal = vh[-1]
-        except np.linalg.LinAlgError:
-            normal = np.array([0.0, 0.0, 1.0])
-        norm = float(np.linalg.norm(normal))
-        if norm < 1e-12:
-            normal = np.array([0.0, 0.0, 1.0])
-        else:
-            normal = normal / norm
-        normals[idx] = normal
+    cloud = _to_point_cloud(points)
+    radius = max(search_radius, 1e-4)
+    cloud.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=radius, max_nn=max_nn))
+    normals = np.asarray(cloud.normals, dtype=np.float64)
+    if normals.shape[0] != points.shape[0]:
+        raise RuntimeError("open3d failed to estimate normals")
     return normals
