@@ -60,7 +60,7 @@
 
 * [x] **P4-1**: 实现接触面获取 (Trimesh Boolean + 法向过滤优化)  
 * [x] **P4-2**: 实现简化版 Wrench 计算 (及 Planar Constraint)  
-* [ ] **P4-3**: 实现完整版 Wrench (Fracture + Friction Integral)
+* [x] **P4-3**: 实现完整版 Wrench (Fracture + Friction Integral)
 
 ### **🔴 Phase 5: 动力学评分 (C++ DynScore)**
 
