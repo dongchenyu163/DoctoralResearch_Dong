@@ -19,6 +19,8 @@ def compute_dynamics_scores(
     friction_coef = float(config.physics.get("friction_coef", 0.5))
     friction_angle = float(config.physics.get("friction_cone", {}).get("angle_deg", 40.0))
     scores = runner.calculator.calc_dynamics_scores(candidate_matrix, wrench, friction_coef, friction_angle)
+    if scores.size:
+        scores = np.clip(scores, 0.0, 1.0)
     return np.asarray(scores, dtype=np.float64)
 
 
