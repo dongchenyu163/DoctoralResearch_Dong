@@ -9,6 +9,7 @@ from pathlib import Path
 from python.instrumentation.timing import TimingRecorder
 from python.pipeline.pipeline_stub import run_pipeline
 from python.utils.config_loader import Config, load_config
+from python.utils.random_seed import set_global_seed
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,6 +32,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     config: Config = load_config(args.config)
+    set_global_seed(config.seed)
 
     recorder = TimingRecorder(config.instrumentation)
 
