@@ -24,6 +24,7 @@ from python.pipeline.trajectory import TrajectoryNode, build_test_trajectory
 from python.pipeline.valid_indices import compute_valid_indices
 from python.pipeline.wrench import compute_wrench
 from python.utils.config_loader import Config
+from python.utils.logging_sections import log_boxed_heading
 from python.utils.logging_setup import CppLoggingSettings
 from python.utils.pointcloud_logging import PointCloudDebugSaver
 
@@ -47,8 +48,11 @@ def run_pipeline(
         config: Parsed JSON config controlling thresholds/weights.
         recorder: Timing recorder that emits per-section instrumentation.
     """
+    log_boxed_heading(LOGGER, "1", "PREPARE DATA / Ω_low 构建")
+    log_boxed_heading(PREPROCESS_LOGGER, "1.1", "Load Raw Point Cloud")
     raw_cloud: RawPointCloud = load_point_cloud(config, recorder)
     LOGGER.info("Loaded point cloud source=%s count=%d", raw_cloud.source_path, raw_cloud.points.shape[0])
+    log_boxed_heading(PREPROCESS_LOGGER, "1.2", "Preprocess → Downsample + Normals")
     preprocess_result: PreprocessResult = preprocess_point_cloud(raw_cloud, config, recorder)
     PREPROCESS_LOGGER.info(
         "Downsampled to %d points (target=%s)",
@@ -69,6 +73,7 @@ def run_pipeline(
     geo_filter = GeoFilterRunner(config, cpp_logging=cpp_logging)
     geo_filter.set_point_cloud(preprocess_result)
 
+    log_boxed_heading(LOGGER, "2", "COMBINATIONS + TRAJECTORY INIT")
     finger_count = int(config.search.get("finger_count", 2))
     combination_matrix = build_all_combinations(preprocess_result.points_low.shape[0], finger_count, recorder)
     accumulator = ScoreAccumulator(combination_matrix)
@@ -89,8 +94,10 @@ def run_pipeline(
     w_pdir = float(pos_weights.get("w_pdir", 1.0))
     w_pdis = float(pos_weights.get("w_pdis", 1.0))
 
+    log_boxed_heading(LOGGER, "3", "TRAJECTORY LOOP / 多阶段计算")
     with recorder.section("python/trajectory_loop"):
         for step_idx, node in enumerate(trajectory_nodes):
+            log_boxed_heading(LOGGER, f"3.{step_idx + 1}", f"Step {step_idx} Pose + Ωg 计算")
             knife_position = node.pose[:3, 3]
             knife_normal = node.pose[:3, 2]
             # PREPARE_DATA line 4: recompute Ωg for each timestep using knife plane.
@@ -107,6 +114,14 @@ def run_pipeline(
                 valid_result.indices.size,
                 valid_result.table_threshold,
                 valid_result.knife_threshold,
+            )
+            VALID_LOGGER.debug(
+                "Step %d table_pass=%d knife_pass=%d plane_pass=%d plane_tol=%.5f",
+                step_idx,
+                valid_result.passed_table,
+                valid_result.passed_knife,
+                valid_result.passed_plane,
+                valid_result.plane_tolerance,
             )
             if valid_summary is None:
                 valid_summary = {
@@ -149,6 +164,7 @@ def run_pipeline(
                     timestep_reports.append(step_report)
                 continue
 
+            log_boxed_heading(CONTACT_LOGGER, f"3.{step_idx + 1}.1", "Contact Surface + Wrench")
             contact_surface: ContactSurfaceResult = extract_contact_surface(preprocess_result, recorder, node.pose)
             with recorder.section("python/wrench_compute"):
                 wrench = compute_wrench(contact_surface, config)
@@ -160,6 +176,7 @@ def run_pipeline(
                 contact_surface.metadata.get("total_faces"),
                 contact_surface.metadata.get("components"),
             )
+            CONTACT_LOGGER.debug("Step %d contact metadata=%s", step_idx, contact_surface.metadata)
             if pc_logger and pc_logger.enabled_for("contact_faces"):
                 contact_points = _flatten_contact_faces(contact_surface.faces)
                 omega_points = preprocess_result.points_low[valid_result.indices] if valid_result.indices.size else np.empty((0, 3))
@@ -171,6 +188,7 @@ def run_pipeline(
                 pc_logger.save_point_cloud("omega_g", step_idx, preprocess_result.points_low[valid_result.indices])
 
             # Algorithm 2: Geometry filter (Table 1 section Ωg).
+            log_boxed_heading(SCORES_LOGGER, f"3.{step_idx + 1}.2", "GeoFilter + Scores")
             filtered_candidates = geo_filter.run(valid_result, valid_candidates, recorder)
             candidate_lookup = _build_row_lookup(valid_candidates, valid_ids)
             filtered_ids = _rows_to_ids(filtered_candidates, candidate_lookup)
@@ -192,6 +210,16 @@ def run_pipeline(
             pos_combined = w_pdir * positional_scores + w_pdis * positional_distances
             # Algorithm 4: dynamics score based on wrench equilibrium.
             dynamics_scores = compute_dynamics_scores(geo_filter, filtered_candidates, wrench, config)
+            SCORES_LOGGER.debug(
+                "Step %d pos(mean=%.4f,min=%.4f,max=%.4f) dyn(mean=%.4f,min=%.4f,max=%.4f)",
+                step_idx,
+                float(pos_combined.mean()) if pos_combined.size else 0.0,
+                float(pos_combined.min()) if pos_combined.size else 0.0,
+                float(pos_combined.max()) if pos_combined.size else 0.0,
+                float(dynamics_scores.mean()) if dynamics_scores.size else 0.0,
+                float(dynamics_scores.min()) if dynamics_scores.size else 0.0,
+                float(dynamics_scores.max()) if dynamics_scores.size else 0.0,
+            )
 
             with recorder.section("python/accumulate_scores"):
                 accumulator.accumulate(filtered_ids, pos_combined, dynamics_scores)

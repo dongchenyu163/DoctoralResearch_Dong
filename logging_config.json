@@ -14,7 +14,10 @@
     "pipeline.preprocess": {"level": "DEBUG"},
     "pipeline.valid_indices": {"level": "DEBUG"},
     "pipeline.contact_surface": {"level": "DEBUG"},
-    "pipeline.scores": {"level": "DEBUG"}
+    "pipeline.scores": {"level": "DEBUG"},
+    "pipeline.wrench": {"level": "DEBUG"},
+    "pipeline.dynamics": {"level": "DEBUG"},
+    "pipeline.debug_pc": {"level": "INFO"}
   },
   "cpp": {
     "enabled": true,

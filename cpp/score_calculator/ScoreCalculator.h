@@ -99,7 +99,8 @@ class ScoreCalculator {
   std::int64_t max_candidates_ = 0;
   double geo_ratio_ = 1.0;
   GeoWeights geo_weights_;
-  std::shared_ptr<spdlog::logger> logger_;
+  std::shared_ptr<spdlog::logger> core_logger_;
+  std::shared_ptr<spdlog::logger> geo_logger_;
+  std::shared_ptr<spdlog::logger> pos_logger_;
+  std::shared_ptr<spdlog::logger> dyn_logger_;
 };
-#include <Eigen/Core>
-#include <Eigen/Eigenvalues>

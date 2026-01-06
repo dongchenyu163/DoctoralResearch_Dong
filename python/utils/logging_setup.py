@@ -10,12 +10,24 @@ from pathlib import Path
 from typing import Dict, Optional
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _relative_path(pathname: str) -> str:
+    """Return repo-relative path if possible."""
+    candidate = Path(pathname).resolve()
+    try:
+        return str(candidate.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(candidate)
+
+
 class _ConsoleFormatter(logging.Formatter):
     """Formatter that uses compact [MMDDhhmmss_mmm] timestamps."""
 
     def format(self, record: logging.LogRecord) -> str:
         record.custom_time = self.formatTime(record)  # type: ignore[attr-defined]
-        return f"[{record.custom_time}] {record.name} {record.levelname}: {record.getMessage()}"
+        return f"[{record.custom_time}] {record.name} {record.levelname}: {record.getMessage()} :: {record.funcName}"
 
     def formatTime(self, record: logging.LogRecord, datefmt: Optional[str] = None) -> str:
         dt = datetime.fromtimestamp(record.created, tz=timezone.utc).astimezone()
@@ -27,7 +39,8 @@ class _FileFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         ts = datetime.fromtimestamp(record.created, tz=timezone.utc).astimezone().isoformat()
-        return f"{ts} {record.name} {record.levelname}: {record.getMessage()}"
+        rel = _relative_path(record.pathname)
+        return f"{ts} {record.name} {record.levelname}: {record.getMessage()} [{rel}]:line {record.lineno} :: {record.funcName}"
 
 
 @dataclass

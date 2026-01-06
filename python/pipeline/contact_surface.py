@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -10,6 +11,8 @@ import trimesh
 
 from python.instrumentation.timing import TimingRecorder
 from python.pipeline.preprocess import PreprocessResult
+
+LOGGER = logging.getLogger("pipeline.contact_surface")
 
 
 @dataclass
@@ -32,6 +35,7 @@ def extract_contact_surface(
         3. Filter faces by alignment with knife side plane to isolate contact surface.
         4. Split connected components to recover Ω_c1, Ω_c2.
     """
+    LOGGER.debug("Extract contact surface pose translation=%s", knife_pose[:3, 3].tolist())
     with recorder.section("python/contact_surface_total"):
         dense_mesh = _build_dense_mesh(preprocess)
         knife_mesh = _build_knife_mesh(knife_pose)
@@ -47,6 +51,12 @@ def extract_contact_surface(
         "total_faces": float(len(purified_faces)),
         "components": float(len(clusters)),
     }
+    LOGGER.debug(
+        "Contact surface faces=%d components=%d dense_bounds=%s",
+        len(purified_faces),
+        len(clusters),
+        np.vstack([dense_mesh.bounds[0], dense_mesh.bounds[1]]).tolist(),
+    )
     return ContactSurfaceResult(faces=clusters, metadata=metadata, mesh=intersection)
 
 

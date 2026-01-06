@@ -39,8 +39,8 @@ void ScoreCalculator::setPointCloud(const Eigen::Ref<const PointMatrix>& points,
   cloud_->height = 1;
   cloud_->is_dense = true;
   kd_tree_.setInputCloud(cloud_);
-  if (logger_) {
-    logger_->info("Loaded point cloud with {} samples", cloud_->size());
+  if (core_logger_) {
+    SPDLOG_LOGGER_INFO(core_logger_, "Loaded point cloud with {} samples", cloud_->size());
   }
 }
 
@@ -48,15 +48,15 @@ void ScoreCalculator::setGeoWeights(double w_fin, double w_knf, double w_tbl) no
   geo_weights_.w_fin = w_fin;
   geo_weights_.w_knf = w_knf;
   geo_weights_.w_tbl = w_tbl;
-  if (logger_) {
-    logger_->debug("Geo weights updated to {}, {}, {}", w_fin, w_knf, w_tbl);
+  if (core_logger_) {
+    SPDLOG_LOGGER_DEBUG(core_logger_, "Geo weights updated to {}, {}, {}", w_fin, w_knf, w_tbl);
   }
 }
 
 void ScoreCalculator::setGeoFilterRatio(double ratio) noexcept {
   geo_ratio_ = std::clamp(ratio, 0.0, 1.0);
-  if (logger_) {
-    logger_->debug("Geo filter ratio set to {}", geo_ratio_);
+  if (core_logger_) {
+    SPDLOG_LOGGER_DEBUG(core_logger_, "Geo filter ratio set to {}", geo_ratio_);
   }
 }
 
@@ -67,7 +67,7 @@ void ScoreCalculator::configureLogging(const std::string& logger_name,
   std::vector<spdlog::sink_ptr> sinks;
   if (enable_console) {
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    console_sink->set_pattern("[%m%d%H%M%S_%e] %v");
+    console_sink->set_pattern("[%m%d%H%M%S_%e] CPP %n %l: %v :: %!");
     sinks.push_back(console_sink);
   }
   if (!file_path.empty()) {
@@ -76,17 +76,32 @@ void ScoreCalculator::configureLogging(const std::string& logger_name,
       std::filesystem::create_directories(path.parent_path());
     }
     auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(file_path, true);
-    file_sink->set_pattern("%Y-%m-%dT%H:%M:%S.%f%z %v");
+    file_sink->set_pattern("%Y-%m-%dT%H:%M:%S.%f%z CPP %n %l: %v [%g]:line %# :: %!");
     sinks.push_back(file_sink);
   }
   if (sinks.empty()) {
-    logger_.reset();
+    core_logger_.reset();
+    geo_logger_.reset();
+    pos_logger_.reset();
+    dyn_logger_.reset();
     return;
   }
-  logger_ = std::make_shared<spdlog::logger>(logger_name, sinks.begin(), sinks.end());
-  logger_->set_level(ParseLevel(level));
-  spdlog::register_logger(logger_);
-  logger_->info("ScoreCalculator logger configured (console={}, file='{}')", enable_console, file_path);
+  const auto level_enum = ParseLevel(level);
+  auto register_stage_logger = [&](const std::string& suffix) -> std::shared_ptr<spdlog::logger> {
+    const std::string full_name = suffix.empty() ? logger_name : logger_name + "." + suffix;
+    spdlog::drop(full_name);
+    auto logger = std::make_shared<spdlog::logger>(full_name, sinks.begin(), sinks.end());
+    logger->set_level(level_enum);
+    spdlog::register_logger(logger);
+    return logger;
+  };
+  core_logger_ = register_stage_logger("");
+  geo_logger_ = register_stage_logger("geo");
+  pos_logger_ = register_stage_logger("pos");
+  dyn_logger_ = register_stage_logger("dyn");
+  if (core_logger_) {
+    SPDLOG_LOGGER_INFO(core_logger_, "ScoreCalculator loggers configured (console={}, file='{}')", enable_console, file_path);
+  }
 }
 
 namespace {
@@ -205,8 +220,8 @@ ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
     return CandidateMatrix(0, candidate_indices.cols());
   }
 
-  if (logger_) {
-    logger_->debug("GeoFilter invoked with {} rows", candidate_indices.rows());
+  if (geo_logger_) {
+    SPDLOG_LOGGER_DEBUG(geo_logger_, "GeoFilter invoked with {} rows", candidate_indices.rows());
   }
   std::vector<RowScore> row_scores;
   row_scores.reserve(static_cast<std::size_t>(candidate_indices.rows()));
@@ -298,8 +313,8 @@ ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
   for (Eigen::Index i = 0; i < keep; ++i) {
     output.row(i) = candidate_indices.row(order[static_cast<std::size_t>(i)].second);
   }
-  if (logger_) {
-    logger_->info("GeoFilter kept {} rows out of {}", keep, row_scores.size());
+  if (geo_logger_) {
+    SPDLOG_LOGGER_INFO(geo_logger_, "GeoFilter kept {} rows out of {}", keep, row_scores.size());
   }
   return output;
 }
@@ -312,8 +327,8 @@ Eigen::VectorXd ScoreCalculator::calcPositionalScores(
   if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
     return Eigen::VectorXd(0);
   }
-  if (logger_) {
-    logger_->debug("Positional score on {} rows", candidate_indices.rows());
+  if (pos_logger_) {
+    SPDLOG_LOGGER_DEBUG(pos_logger_, "Positional score on {} rows", candidate_indices.rows());
   }
   Eigen::VectorXd scores(candidate_indices.rows());
   PointCloud subset;
@@ -369,8 +384,8 @@ Eigen::VectorXd ScoreCalculator::calcPositionalDistances(
   if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
     return Eigen::VectorXd(0);
   }
-  if (logger_) {
-    logger_->debug("Positional distance on {} rows", candidate_indices.rows());
+  if (pos_logger_) {
+    SPDLOG_LOGGER_DEBUG(pos_logger_, "Positional distance on {} rows", candidate_indices.rows());
   }
   Eigen::VectorXd scores(candidate_indices.rows());
   PointCloud subset;
@@ -417,8 +432,8 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
   if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
     return Eigen::VectorXd(0);
   }
-  if (logger_) {
-    logger_->info("Dynamics scoring on {} rows; wrench norm={}", candidate_indices.rows(), wrench.norm());
+  if (dyn_logger_) {
+    SPDLOG_LOGGER_INFO(dyn_logger_, "Dynamics scoring on {} rows; wrench norm={}", candidate_indices.rows(), wrench.norm());
   }
   const Eigen::Index rows = candidate_indices.rows();
   Eigen::VectorXd scores(rows);
@@ -489,8 +504,8 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     double combined = (feasibility + balance + e_mag + e_dir + e_var) / 5.0;
     scores(i) = std::clamp(combined, 0.0, 1.0);
   }
-  if (logger_) {
-    logger_->debug("Dynamics scoring complete");
+  if (dyn_logger_) {
+    SPDLOG_LOGGER_DEBUG(dyn_logger_, "Dynamics scoring complete");
   }
   return scores;
 }
