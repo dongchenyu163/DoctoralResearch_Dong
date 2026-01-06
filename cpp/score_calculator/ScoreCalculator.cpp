@@ -108,6 +108,20 @@ double ScoreCalculator::computeMinPairwiseDistance(const PointCloud& subset) con
   return min_dist;
 }
 
+Eigen::Vector3d ScoreCalculator::computeCentroid(const PointCloud& subset) const {
+  Eigen::Vector3d centroid = Eigen::Vector3d::Zero();
+  if (subset.empty()) {
+    return centroid;
+  }
+  for (const auto& point : subset) {
+    centroid.x() += static_cast<double>(point.x);
+    centroid.y() += static_cast<double>(point.y);
+    centroid.z() += static_cast<double>(point.z);
+  }
+  centroid /= static_cast<double>(subset.size());
+  return centroid;
+}
+
 ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
     const Eigen::Ref<const CandidateMatrix>& candidate_indices,
     const Eigen::Vector3d& knife_p,
@@ -140,13 +154,7 @@ ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
     subset.width = static_cast<uint32_t>(subset.size());
     subset.height = 1;
     subset.is_dense = true;
-    Eigen::Vector3d centroid = Eigen::Vector3d::Zero();
-    for (const auto& point : subset) {
-      centroid.x() += point.x;
-      centroid.y() += point.y;
-      centroid.z() += point.z;
-    }
-    centroid /= static_cast<double>(subset.size());
+    Eigen::Vector3d centroid = computeCentroid(subset);
     const double e_fin = computeMinPairwiseDistance(subset);
     const double e_knf = distanceToPlane(centroid, knife_p, knife_n);
     double min_table = std::numeric_limits<double>::max();
@@ -214,4 +222,57 @@ ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
     output.row(i) = candidate_indices.row(order[static_cast<std::size_t>(i)].second);
   }
   return output;
+}
+
+Eigen::VectorXd ScoreCalculator::calcPositionalScores(
+    const Eigen::Ref<const CandidateMatrix>& candidate_indices,
+    const Eigen::Vector3d& knife_p,
+    const Eigen::Vector3d& knife_n) const {
+  if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
+    return Eigen::VectorXd(0);
+  }
+  Eigen::VectorXd scores(candidate_indices.rows());
+  PointCloud subset;
+  subset.reserve(static_cast<std::size_t>(candidate_indices.cols()));
+  Eigen::Vector3d normalized_kn = knife_n.normalized();
+  if (!std::isfinite(normalized_kn.norm()) || normalized_kn.norm() < 1e-6) {
+    normalized_kn = Eigen::Vector3d(0.0, 0.0, 1.0);
+  }
+
+  for (Eigen::Index row = 0; row < candidate_indices.rows(); ++row) {
+    subset.clear();
+    bool row_valid = true;
+    for (Eigen::Index col = 0; col < candidate_indices.cols(); ++col) {
+      const int idx = candidate_indices(row, col);
+      if (idx < 0 || idx >= static_cast<int>(cloud_->size())) {
+        row_valid = false;
+        break;
+      }
+      subset.push_back(cloud_->points[static_cast<std::size_t>(idx)]);
+    }
+    double score = 0.0;
+    if (row_valid && subset.size() >= 2) {
+      subset.width = static_cast<uint32_t>(subset.size());
+      subset.height = 1;
+      subset.is_dense = true;
+      Eigen::Vector3d centroid = computeCentroid(subset);
+      Eigen::Matrix3d cov = Eigen::Matrix3d::Zero();
+      for (const auto& point : subset) {
+        Eigen::Vector3d diff(static_cast<double>(point.x) - centroid.x(),
+                             static_cast<double>(point.y) - centroid.y(),
+                             static_cast<double>(point.z) - centroid.z());
+        cov += diff * diff.transpose();
+      }
+      Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(cov);
+      if (solver.info() == Eigen::Success) {
+        Eigen::Vector3d principal = solver.eigenvectors().col(2);
+        if (principal.norm() > 1e-6) {
+          principal.normalize();
+          score = 1.0 - std::abs(principal.dot(normalized_kn));
+        }
+      }
+    }
+    scores(row) = std::clamp(score, 0.0, 1.0);
+  }
+  return scores;
 }

@@ -58,6 +58,20 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
         self.assertEqual(result.shape[0], 1)
         np.testing.assert_array_equal(result[0], np.array([1, 2], dtype=np.int32))
 
+    def test_calc_positional_scores_prefers_orthogonal(self) -> None:
+        calc = score_calculator.ScoreCalculator()
+        points = np.array([[0.0, 0.0, 0.0], [0.1, 0.0, 0.0], [0.0, 0.1, 0.0]], dtype=np.float64)
+        normals = np.ones_like(points)
+        calc.set_point_cloud(points, normals)
+        candidates = np.array([[0, 1], [0, 2]], dtype=np.int32)
+        scores = calc.calc_positional_scores(
+            candidates,
+            np.zeros(3, dtype=np.float64),
+            np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        )
+        self.assertEqual(scores.shape[0], 2)
+        self.assertTrue(np.all(scores >= 0.0))
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

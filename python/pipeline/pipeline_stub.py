@@ -61,6 +61,10 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
     with recorder.section("python/trajectory_loop"):
         for step_idx, node in enumerate(trajectory_nodes):
             valid_indices_count = int(valid_result.indices.size)
+            knife_position = node.pose[:3, 3]
+            knife_normal = node.pose[:3, 2]
+            positional_scores = geo_filter.calc_positional_scores(filtered_candidates, knife_position, knife_normal)
+            pos_mean = float(positional_scores.mean()) if positional_scores.size else 0.0
             with recorder.section("python/accumulate_scores"):
                 timestep_reports.append(
                     {
@@ -69,6 +73,7 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
                         "geo_filter_ratio": config.search.get("geo_filter_ratio"),
                         "pose": node.pose[:3, 3].tolist(),
                         "velocity": node.velocity.tolist(),
+                        "positional_score_mean": pos_mean,
                     }
                 )
 

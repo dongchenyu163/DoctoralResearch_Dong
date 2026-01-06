@@ -20,5 +20,11 @@ PYBIND11_MODULE(score_calculator, m) {
           py::arg("knife_normal"),
           py::arg("table_z"),
           R"pbdoc(Returns the filtered candidate matrix.)pbdoc")
+      .def(
+          "calc_positional_scores",
+          &ScoreCalculator::calcPositionalScores,
+          py::arg("candidate_indices"),
+          py::arg("knife_position"),
+          py::arg("knife_normal"))
       .def_property_readonly("point_count", &ScoreCalculator::pointCount);
 }

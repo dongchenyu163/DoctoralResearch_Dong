@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <Eigen/Core>
+#include <Eigen/Eigenvalues>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -39,6 +40,10 @@ class ScoreCalculator {
                                    const Eigen::Vector3d& knife_n,
                                    double table_z) const;
 
+  Eigen::VectorXd calcPositionalScores(const Eigen::Ref<const CandidateMatrix>& candidate_indices,
+                                       const Eigen::Vector3d& knife_p,
+                                       const Eigen::Vector3d& knife_n) const;
+
   std::int64_t pointCount() const noexcept {
     return cloud_ ? static_cast<std::int64_t>(cloud_->size()) : 0;
   }
@@ -52,6 +57,7 @@ class ScoreCalculator {
   };
 
   double computeMinPairwiseDistance(const PointCloud& subset) const;
+  Eigen::Vector3d computeCentroid(const PointCloud& subset) const;
 
   PointCloudPtr cloud_;
   pcl::KdTreeFLANN<PointT> kd_tree_;
