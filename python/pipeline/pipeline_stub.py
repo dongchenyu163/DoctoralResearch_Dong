@@ -28,6 +28,12 @@ from python.utils.config_loader import Config
 from python.utils.logging_sections import log_boxed_heading
 from python.utils.logging_setup import CppLoggingSettings
 from python.utils.pointcloud_logging import PointCloudDebugSaver
+import numpy as np
+
+try:
+    import trimesh
+except ImportError:  # pragma: no cover
+    trimesh = None
 
 LOGGER = logging.getLogger("pipeline")
 PREPROCESS_LOGGER = logging.getLogger("pipeline.preprocess")
@@ -103,6 +109,8 @@ def run_pipeline(
             knife_position = node.pose[:3, 3]
             knife_normal = node.pose[:3, 2]
             knife_instance = knife_model.instantiate(node.pose)
+            if pc_logger and preprocess_result.points_high.size:
+                pc_logger.save_point_cloud("omega_high", step_idx, preprocess_result.points_high)
             # PREPARE_DATA line 4: recompute Ωg for each timestep using knife plane.
             valid_result = compute_valid_indices(preprocess_result.points_low, config, recorder, knife_instance)
             VALID_LOGGER.info(
@@ -176,13 +184,25 @@ def run_pipeline(
                 contact_surface.metadata.get("components"),
             )
             CONTACT_LOGGER.debug("Step %d contact metadata=%s", step_idx, contact_surface.metadata)
+            if pc_logger and pc_logger.enabled_for("knife_mesh"):
+                pc_logger.save_mesh("knife_mesh", step_idx, knife_instance.mesh)
+            if pc_logger and pc_logger.enabled_for("food_mesh") and preprocess_result.food_mesh is not None:
+                pc_logger.save_mesh("food_mesh", step_idx, preprocess_result.food_mesh)
             if pc_logger and pc_logger.enabled_for("contact_faces"):
                 contact_points = _flatten_contact_faces(contact_surface.faces)
                 omega_points = preprocess_result.points_low[valid_result.indices] if valid_result.indices.size else np.empty((0, 3))
                 combined_points, combined_colors = _combine_points_for_debug(omega_points, contact_points)
                 pc_logger.save_point_cloud("contact_faces", step_idx, combined_points, combined_colors)
-            if pc_logger and pc_logger.enabled_for("contact_mesh") and contact_surface.mesh is not None:
-                pc_logger.save_mesh("contact_mesh", step_idx, contact_surface.mesh)
+            if pc_logger and pc_logger.enabled_for("knife_food_intersection") and contact_surface.mesh is not None:
+                pc_logger.save_mesh("knife_food_intersection", step_idx, contact_surface.mesh)
+            if pc_logger:
+                for side_idx, face_block in enumerate(contact_surface.faces):
+                    stage_name = f"contact_mesh_side{side_idx}"
+                    if not pc_logger.enabled_for(stage_name):
+                        continue
+                    mesh = _faces_to_trimesh(face_block)
+                    if mesh is not None:
+                        pc_logger.save_mesh(stage_name, step_idx, mesh)
             if pc_logger and pc_logger.enabled_for("omega_g") and valid_result.indices.size:
                 pc_logger.save_point_cloud("omega_g", step_idx, preprocess_result.points_low[valid_result.indices])
 
@@ -372,3 +392,12 @@ def _combine_points_for_debug(omega_points: np.ndarray, contact_points: np.ndarr
     if not point_blocks:
         return np.empty((0, 3)), np.empty((0, 3))
     return np.vstack(point_blocks), np.vstack(color_blocks)
+
+
+def _faces_to_trimesh(face_block: np.ndarray):
+    if face_block.size == 0 or trimesh is None:
+        return None
+    triangles = np.asarray(face_block, dtype=np.float64).reshape(-1, 3, 3)
+    vertices = triangles.reshape(-1, 3)
+    faces = np.arange(vertices.shape[0], dtype=np.int64).reshape(-1, 3)
+    return trimesh.Trimesh(vertices=vertices, faces=faces, process=False)

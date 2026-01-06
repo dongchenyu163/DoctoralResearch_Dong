@@ -3,7 +3,12 @@
   "output_dir": "debug_pc_calc_data",
   "stages": {
     "omega_g": true,
+    "omega_high": true,
     "contact_faces": true,
-    "contact_mesh": true
+    "knife_mesh": true,
+    "food_mesh": true,
+    "knife_food_intersection": true,
+    "contact_mesh_side0": true,
+    "contact_mesh_side1": true
   }
 }
