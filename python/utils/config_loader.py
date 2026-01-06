@@ -97,6 +97,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "enabled": True,
             "method": "greedy",
             "greedy": {
+                "mls": {
+                    "enabled": True,
+                    "radius": 0.01
+                },
                 "normal_radius": 0.01,
                 "normal_max_nn": 60,
                 "gpt_params": {

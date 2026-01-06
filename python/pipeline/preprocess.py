@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass, field
 import hashlib
 from pathlib import Path
@@ -22,6 +23,8 @@ except ImportError:  # pragma: no cover - optional dependency
 
 from python.instrumentation.timing import TimingRecorder
 from python.utils.config_loader import Config
+
+os.environ.setdefault("NUMBA_DISABLE_JIT", "1")
 from python.utils import py_gpt
 
 LOGGER = logging.getLogger("pipeline.preprocess")

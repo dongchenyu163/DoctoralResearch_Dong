@@ -11,9 +11,9 @@
         "normal_radius": 0.01,
         "normal_max_nn": 60,
         "gpt_params": {
-          "search_radius": 0.025,
-          "mu": 2.5,
-          "max_nearest_neighbors": 100,
+          "search_radius": 0.04,
+          "mu": 5.5,
+          "max_nearest_neighbors": 200,
           "max_surface_angle": 45.0,
           "min_angle": 10.0,
           "max_angle": 120.0,
