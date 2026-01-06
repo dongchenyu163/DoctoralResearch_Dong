@@ -53,7 +53,7 @@
 
 ### **🔴 Phase 3: 位置评分 (C++ PosScore)**
 
-* [ ] **P3-1**: 实现方向评分 ($E_{pdir}$) (PCA/Normal Dot)  
+* [x] **P3-1**: 实现方向评分 ($E_{pdir}$) (PCA/Normal Dot)  
 * [ ] **P3-2**: 实现力臂评分 ($E_{pdis}$) 及最终位置分归一化
 
 ### **🔴 Phase 4: 包丁力计算 (Python Physics)**
