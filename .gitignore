@@ -4,3 +4,4 @@ logs/
 output/
 .build/
 build/
+.history

@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
+from python.instrumentation.timing import TimingRecorder
 from python.pipeline.pipeline_stub import run_pipeline
 from python.utils.config_loader import Config, load_config
 
@@ -31,7 +32,9 @@ def main() -> None:
     args = parse_args()
     config: Config = load_config(args.config)
 
-    result = run_pipeline(config)
+    recorder = TimingRecorder(config.instrumentation)
+
+    result = run_pipeline(config, recorder)
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
