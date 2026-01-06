@@ -6,9 +6,11 @@ from typing import Dict, List
 
 from python.instrumentation.timing import TimingRecorder
 from python.pipeline.accumulate import build_all_combinations
+from python.pipeline.contact_surface import ContactSurfaceResult, extract_contact_surface
 from python.pipeline.geo_filter import GeoFilterRunner
 from python.pipeline.preprocess import PreprocessResult, RawPointCloud, load_point_cloud, preprocess_point_cloud
 from python.pipeline.trajectory import TrajectoryNode, build_test_trajectory
+from python.pipeline.wrench import compute_wrench
 from python.pipeline.valid_indices import ValidIndicesResult, compute_valid_indices
 from python.utils.config_loader import Config
 
@@ -49,11 +51,12 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
 
     filtered_candidates = geo_filter.run(valid_result, combination_matrix, recorder)
 
-    with recorder.section("python/mesh_boolean"):
-        mesh_boolean_summary = {"contact_faces": 0, "purified_faces": 0}
-
-    with recorder.section("python/contact_surface_purify"):
-        mesh_boolean_summary["purified_faces"] = mesh_boolean_summary["contact_faces"]
+    contact_surface: ContactSurfaceResult = extract_contact_surface(preprocess_result, recorder)
+    wrench = compute_wrench(contact_surface, config)
+    mesh_boolean_summary = {
+        "contact_faces": contact_surface.metadata.get("total_faces", 0.0),
+        "purified_faces": contact_surface.metadata.get("total_faces", 0.0),
+    }
 
     timestep_reports: List[Dict[str, object]] = []
     trajectory_nodes: List[TrajectoryNode] = build_test_trajectory(preprocess_result, config, recorder)
@@ -88,6 +91,7 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
         "valid_indices": valid_summary,
         "combinations": combinations_summary,
         "contact_surface": mesh_boolean_summary,
+        "wrench": wrench.tolist(),
         "geo_filter": {"candidates_after_cpp": int(filtered_candidates.shape[0])},
         "trajectory": {"nodes": len(trajectory_nodes)},
         "timesteps": timestep_reports,
