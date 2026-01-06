@@ -144,6 +144,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 "compute_valid_indices_total": True,
                 "valid_filter_table": True,
                 "valid_filter_knife": True,
+                "valid_filter_plane": True,
                 "mesh_boolean": True,
                 "contact_surface_purify": True,
                 "contact_surface_total": True,

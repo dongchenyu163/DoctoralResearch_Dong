@@ -77,6 +77,7 @@
         "compute_valid_indices_total": true,
         "valid_filter_table": true,
         "valid_filter_knife": true,
+        "valid_filter_plane": true,
         "mesh_boolean": true,
         "contact_surface_purify": true,
         "contact_surface_total": true,

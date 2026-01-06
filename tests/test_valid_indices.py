@@ -31,21 +31,40 @@ class ValidIndicesTests(unittest.TestCase):
             }
         )
         recorder = make_recorder(config)
-        result = compute_valid_indices(self.points, config, recorder)
+        result = compute_valid_indices(
+            self.points,
+            config,
+            recorder,
+            knife_point=np.zeros(3, dtype=np.float64),
+            knife_normal=np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        )
         self.assertEqual(result.indices.tolist(), [2])
         self.assertEqual(result.passed_table, 2)
         self.assertEqual(result.passed_knife, 3)
+        self.assertEqual(result.passed_plane, 3)
 
     def test_extreme_thresholds_return_empty(self) -> None:
         config = make_config({"search": {"table_clearance": 0.2}})
         recorder = make_recorder(config)
-        result = compute_valid_indices(self.points, config, recorder)
+        result = compute_valid_indices(
+            self.points,
+            config,
+            recorder,
+            knife_point=np.zeros(3, dtype=np.float64),
+            knife_normal=np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        )
         self.assertEqual(result.indices.size, 0)
 
     def test_extreme_thresholds_return_full_set(self) -> None:
-        config = make_config({"search": {"table_clearance": -1.0, "knife_clearance": -1.0}})
+        config = make_config({"search": {"table_clearance": -1.0, "knife_clearance": -1.0, "knife_plane_clearance": 1.0}})
         recorder = make_recorder(config)
-        result = compute_valid_indices(self.points, config, recorder)
+        result = compute_valid_indices(
+            self.points,
+            config,
+            recorder,
+            knife_point=np.zeros(3, dtype=np.float64),
+            knife_normal=np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        )
         self.assertEqual(result.indices.size, self.points.shape[0])
 
 

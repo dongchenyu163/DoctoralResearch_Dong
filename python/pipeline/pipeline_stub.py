@@ -73,8 +73,16 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
 
     with recorder.section("python/trajectory_loop"):
         for step_idx, node in enumerate(trajectory_nodes):
-            # PREPARE_DATA line 4: recompute Ωg for each timestep.
-            valid_result = compute_valid_indices(preprocess_result.points_low, config, recorder)
+            knife_position = node.pose[:3, 3]
+            knife_normal = node.pose[:3, 2]
+            # PREPARE_DATA line 4: recompute Ωg for each timestep using knife plane.
+            valid_result = compute_valid_indices(
+                preprocess_result.points_low,
+                config,
+                recorder,
+                knife_position,
+                knife_normal,
+            )
             if valid_summary is None:
                 valid_summary = {
                     "count": int(valid_result.indices.size),
@@ -82,6 +90,8 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
                     "knife_threshold": valid_result.knife_threshold,
                     "passed_table": valid_result.passed_table,
                     "passed_knife": valid_result.passed_knife,
+                    "passed_plane": valid_result.passed_plane,
+                    "plane_tolerance": valid_result.plane_tolerance,
                 }
 
             active_ids = accumulator.active_ids()
@@ -97,8 +107,6 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
             if invalid_ids.size:
                 accumulator.mark_eliminated(invalid_ids, "invalid_indices", step_idx)
 
-            knife_position = node.pose[:3, 3]
-            knife_normal = node.pose[:3, 2]
             step_report = {
                 "timestep": step_idx,
                 "knife_position": knife_position.tolist(),
@@ -149,13 +157,18 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
                 timestep_reports.append(step_report)
 
     if valid_summary is None:
-        valid_result = compute_valid_indices(preprocess_result.points_low, config, recorder)
+        # If no steps executed, fall back to static Ωg summary.
+        knife_position = np.zeros(3, dtype=np.float64)
+        knife_normal = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+        valid_result = compute_valid_indices(preprocess_result.points_low, config, recorder, knife_position, knife_normal)
         valid_summary = {
             "count": int(valid_result.indices.size),
             "table_threshold": valid_result.table_threshold,
             "knife_threshold": valid_result.knife_threshold,
             "passed_table": valid_result.passed_table,
             "passed_knife": valid_result.passed_knife,
+            "passed_plane": valid_result.passed_plane,
+            "plane_tolerance": valid_result.plane_tolerance,
         }
 
     best_idx = accumulator.best_candidate_index()
