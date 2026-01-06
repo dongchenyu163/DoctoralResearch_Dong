@@ -1,5 +1,7 @@
 {
   "preprocess": {
+    "point_cloud_path": null,
+    "synthetic_point_count": 512,
     "downsample_num": 100,
     "normal_estimation_radius": 0.01
   },
@@ -34,9 +36,15 @@
     },
     "force_balance_threshold": 0.0001
   },
+  "environment": {
+    "table_z": 0.0
+  },
   "search": {
     "geo_filter_ratio": 0.6,
-    "force_sample_count": 1000
+    "force_sample_count": 1000,
+    "finger_count": 2,
+    "table_clearance": 0.002,
+    "knife_clearance": 0.002
   },
   "instrumentation": {
     "enable_timing": true,
@@ -51,11 +59,18 @@
       "python": {
         "io": true,
         "preprocess": true,
+        "preprocess_total": true,
+        "downsample": true,
+        "estimate_normals": true,
         "trajectory_loop": true,
         "valid_indices": true,
+        "compute_valid_indices_total": true,
+        "valid_filter_table": true,
+        "valid_filter_knife": true,
         "mesh_boolean": true,
         "contact_surface_purify": true,
-        "accumulate_scores": true
+        "accumulate_scores": true,
+        "build_P_all": true
       },
       "cpp": {
         "kdtree": true,

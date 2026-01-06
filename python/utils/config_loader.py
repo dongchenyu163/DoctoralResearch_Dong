@@ -66,6 +66,7 @@ class Config:
     weights: Dict[str, Any]
     knife: Dict[str, Any]
     physics: Dict[str, Any]
+    environment: Dict[str, Any]
     search: Dict[str, Any]
     instrumentation: InstrumentationConfig
     seed: int
@@ -77,6 +78,7 @@ class Config:
             weights=dict(data["weights"]),
             knife=dict(data["knife"]),
             physics=dict(data["physics"]),
+            environment=dict(data.get("environment", {})),
             search=dict(data["search"]),
             instrumentation=InstrumentationConfig.from_dict(data["instrumentation"]),
             seed=int(data.get("seed", 42)),
@@ -84,7 +86,12 @@ class Config:
 
 
 DEFAULT_CONFIG: Dict[str, Any] = {
-    "preprocess": {"downsample_num": 100, "normal_estimation_radius": 0.01},
+    "preprocess": {
+        "point_cloud_path": None,
+        "synthetic_point_count": 512,
+        "downsample_num": 100,
+        "normal_estimation_radius": 0.01,
+    },
     "weights": {
         "geo_score": {"w_fin": 1.0, "w_knf": 4.4, "w_tbl": 6.0},
         "pos_score": {"w_pdir": 5.0, "w_pdis": 4.0},
@@ -99,7 +106,14 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "friction_cone": {"angle_deg": 40.0, "num_sides": 8},
         "force_balance_threshold": 1e-4,
     },
-    "search": {"geo_filter_ratio": 0.6, "force_sample_count": 1000},
+    "environment": {"table_z": 0.0},
+    "search": {
+        "geo_filter_ratio": 0.6,
+        "force_sample_count": 1000,
+        "finger_count": 2,
+        "table_clearance": 0.002,
+        "knife_clearance": 0.002,
+    },
     "instrumentation": {
         "enable_timing": True,
         "enable_detailed_timing": True,
@@ -110,11 +124,18 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "python": {
                 "io": True,
                 "preprocess": True,
+                "preprocess_total": True,
+                "downsample": True,
+                "estimate_normals": True,
                 "trajectory_loop": True,
                 "valid_indices": True,
+                "compute_valid_indices_total": True,
+                "valid_filter_table": True,
+                "valid_filter_knife": True,
                 "mesh_boolean": True,
                 "contact_surface_purify": True,
                 "accumulate_scores": True,
+                "build_P_all": True,
             },
             "cpp": {
                 "kdtree": True,
