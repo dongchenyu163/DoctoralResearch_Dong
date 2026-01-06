@@ -71,8 +71,8 @@
 
 ### **🔴 Phase 6: 流程整合 (Integration)**
 
-* [ ] **P6-1**: 完成主循环 (Algorithm 1\) 逻辑对齐  
-* [ ] **P6-2**: 实现标准结果输出 (JSON) 与调试数据 Dump
+* [x] **P6-1**: 完成主循环 (Algorithm 1\) 逻辑对齐  
+* [x] **P6-2**: 实现标准结果输出 (JSON) 与调试数据 Dump
 
 ### **🔴 Phase 7: 验证与文档 (Validation)**
 
