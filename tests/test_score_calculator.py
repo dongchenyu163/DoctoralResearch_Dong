@@ -24,6 +24,22 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
         self.assertEqual(calc.point_count, 4)
         np.testing.assert_array_equal(np.array(calc.points), points)
 
+    def test_filter_by_geo_score_respects_max_candidates(self) -> None:
+        calc = score_calculator.ScoreCalculator()
+        points = np.zeros((4, 3), dtype=np.float64)
+        normals = np.ones((4, 3), dtype=np.float64)
+        calc.set_point_cloud(points, normals)
+        calc.set_max_candidates(1)
+        candidates = np.array([[0, 1], [1, 2]], dtype=np.int32)
+        result = calc.filter_by_geo_score(
+            candidates,
+            np.zeros(3, dtype=np.float64),
+            np.array([0.0, 0.0, 1.0], dtype=np.float64),
+            0.0,
+        )
+        self.assertEqual(result.shape[0], 1)
+        np.testing.assert_array_equal(result[0], np.array([0, 1], dtype=np.int32))
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
