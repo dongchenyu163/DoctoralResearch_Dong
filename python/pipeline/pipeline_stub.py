@@ -6,6 +6,7 @@ from typing import Dict, List
 
 from python.instrumentation.timing import TimingRecorder
 from python.pipeline.accumulate import build_all_combinations
+from python.pipeline.geo_filter import GeoFilterRunner
 from python.pipeline.preprocess import PreprocessResult, RawPointCloud, load_point_cloud, preprocess_point_cloud
 from python.pipeline.valid_indices import ValidIndicesResult, compute_valid_indices
 from python.utils.config_loader import Config
@@ -27,6 +28,8 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
     }
 
     valid_result: ValidIndicesResult = compute_valid_indices(preprocess_result.points_low, config, recorder)
+    geo_filter = GeoFilterRunner(config)
+    geo_filter.set_point_cloud(preprocess_result)
 
     finger_count = int(config.search.get("finger_count", 2))
     combination_matrix = build_all_combinations(preprocess_result.points_low.shape[0], finger_count, recorder)
@@ -42,6 +45,8 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
         "passed_table": valid_result.passed_table,
         "passed_knife": valid_result.passed_knife,
     }
+
+    filtered_candidates = geo_filter.run(valid_result, combination_matrix, recorder)
 
     with recorder.section("python/mesh_boolean"):
         mesh_boolean_summary = {"contact_faces": 0, "purified_faces": 0}
@@ -70,6 +75,7 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
         "valid_indices": valid_summary,
         "combinations": combinations_summary,
         "contact_surface": mesh_boolean_summary,
+        "geo_filter": {"candidates_after_cpp": int(filtered_candidates.shape[0])},
         "timesteps": timestep_reports,
     }
     return result_summary

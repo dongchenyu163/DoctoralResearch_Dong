@@ -113,6 +113,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "finger_count": 2,
         "table_clearance": 0.002,
         "knife_clearance": 0.002,
+        "max_geo_candidates": 2048,
     },
     "instrumentation": {
         "enable_timing": True,

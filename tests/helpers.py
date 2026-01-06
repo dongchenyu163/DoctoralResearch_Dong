@@ -3,6 +3,12 @@
 from __future__ import annotations
 
 import copy
+import sys
+from pathlib import Path
+
+BUILD_DIR = Path(__file__).resolve().parents[1] / "build"
+if str(BUILD_DIR) not in sys.path:
+    sys.path.insert(0, str(BUILD_DIR))
 
 from python.instrumentation.timing import TimingRecorder
 from python.utils.config_loader import Config, DEFAULT_CONFIG
