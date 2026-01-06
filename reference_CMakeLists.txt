@@ -1,0 +1,136 @@
+cmake_minimum_required(VERSION 3.15...3.22)
+project(GraspingPointCalculator LANGUAGES CXX)
+cmake_policy(SET CMP0146 OLD)  # CMakeLists.txt:10 (find_package):Policy CMP0146 is not set: The FindCUDA module is removed.
+cmake_policy(SET CMP0144 OLD)  # pcl-1.12/Modules/FindFLANN.cmake:44 (find_package):    find_package uses upper-case <PACKAGENAME>_ROOT variables.
+cmake_policy(SET CMP0167 OLD)  # pcl-1.12/PCLConfig.cmake:125    The FindBoost module is removed.
+
+
+# Enable CUDA support
+option(ENABLE_CUDA_SUPPORT "Using CUDA?" ON)
+if(ENABLE_CUDA_SUPPORT)
+	# Find and Enable CUDA support
+	set(CUDA_TOOLKIT_ROOT_DIR /usr/local/cuda-12.2)
+	find_package(CUDA 12.2 REQUIRED)
+	set(CMAKE_CUDA_COMPILER ${CUDA_NVCC_EXECUTABLE})  # Must set the CUDA compiler before enable_language(CUDA).
+	enable_language(CUDA)
+
+	# Set CUDA related variable.
+	set(CMAKE_CUDA_STANDARD 17)
+	set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+	set(CMAKE_CUDA_ARCHITECTURES 75)  # Set CUDA architecture（[75] for [RTX 2080]）
+	message("CMAKE_CUDA_COMPILER: ${CMAKE_CUDA_COMPILER}")
+
+	include_directories(${CUDA_INCLUDE_DIRS})
+endif()
+
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+include_directories(${EIGEN3_INCLUDE_DIR})
+
+# PCL related packages
+find_package(VTK 9.2 QUIET)
+if (VTK_QT_VERSION)
+	message("Not found VTK for some reason, try find QT before the VTK")
+	find_package(Qt6 QUIET COMPONENTS Concurrent OpenGL Widgets PATHS /home/cookteam/Qt/6.4.1/gcc_64 NO_DEFAULT_PATH)
+	find_package(VTK 9.2 REQUIRED)
+endif (VTK_QT_VERSION)
+include_directories(${VTK_PREFIX_PATH}/include/vtk-9.2)
+message("=== PCL ===")
+find_package(PCL 1.12 REQUIRED)
+include_directories(${PCL_INCLUDE_DIRS} ${VTK_USE_FILE})
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
+set( ADDITIONAL_LIBRARIES ${ADDITIONAL_LIBRARIES}  ${PCL_LIBRARIES} )
+
+# CGAL
+find_package(CGAL REQUIRED COMPONENTS Core)
+set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE TRUE)
+set(CGAL_LINK_LIBRARIES CGAL::CGAL)
+set( ADDITIONAL_LIBRARIES ${ADDITIONAL_LIBRARIES} ${CGAL_LINK_LIBRARIES})
+
+
+# JSON related
+include(FetchContent)
+FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(json)
+# set( ADDITIONAL_LIBRARIES ${ADDITIONAL_LIBRARIES}  nlohmann_json::nlohmann_json )
+set(JSON_LIBRARIES nlohmann_json::nlohmann_json)
+
+
+# SPDLOG
+# FetchContent_Declare(spdlog URL https://github.com/gabime/spdlog/releases/download/v1.14.0/spdlog.tar.gz)
+# FetchContent_Declare(spdlog URL https://github.com/gabime/spdlog/archive/refs/tags/v1.14.0.tar.gz)
+FetchContent_Declare(spdlog URL https://github.com/gabime/spdlog/archive/v1.14.0.tar.gz DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(spdlog)
+add_subdirectory("Utilities/spdlog")
+set(SPDLOG_LIBRARIES spdlog::spdlog)
+
+
+# Google Test
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/refs/tags/v1.15.2.zip
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(googletest)
+
+enable_testing()
+
+
+# cppitertools
+FetchContent_Declare(cppitertools 
+	GIT_REPOSITORY https://github.com/ryanhaining/cppitertools.git
+	# GIT_REPOSITORY git@github.com:ryanhaining/cppitertools.git
+	# GIT_TAG 8c6fed182c30e7ccae8d09699cfb03862f24c28c
+	GIT_TAG 13947eb68f464cb014343de7a155016290655d1a
+	DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+	GIT_SHALLOW ON
+	)
+FetchContent_MakeAvailable(cppitertools)
+set(ITERTOOLS_LIBRARIES cppitertools::cppitertools)
+
+
+# Pybind11 related
+set(PYBIND11_FINDPYTHON on)  # <== Necessary for PYBIND11 finding Python from a custom path
+set(YOUR_PYTHON_INTERPRETER_PATH "~/.pyenv/versions/cookteam-dong-env/bin" CACHE FILEPATH "Path to the Python interpreter.Like:[~/.pyenv/versions/cookteam-dong-env/bin]")
+set(Python_ROOT_DIR "${YOUR_PYTHON_INTERPRETER_PATH}")
+# message("====\t Python_LINK_OPTIONS: ${YOUR_PYTHON_INTERPRETER_PATH}") 
+add_subdirectory(pybind11)
+
+
+# For OpenMP
+find_package(OpenMP REQUIRED)
+if(OpenMP_FOUND)
+    # set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+endif()
+
+
+# LIBDW: sudo apt install libdw-dev
+# Get the backtrack info.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBDW REQUIRED libdw)
+include_directories(${LIBDW_INCLUDE_DIRS})
+set(ADDITIONAL_LIBRARIES ${ADDITIONAL_LIBRARIES} ${LIBDW_LIBRARIES})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+
+# Enable ccache if found
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    message(STATUS "Using ccache: ${CCACHE_PROGRAM}")
+    set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}") 
+endif()
+
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
+set(CMAKE_BUILD_TYPE Debug)
+
+# Define the build type macro for program.
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_definitions(BUILD_DEBUG)
+elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+    add_compile_definitions(BUILD_RELEASE)
+endif()
+
