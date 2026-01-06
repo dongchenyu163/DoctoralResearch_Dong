@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <Eigen/Core>
@@ -13,6 +14,9 @@
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/basic_file_sink.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 
 // ScoreCalculator implements Algorithms 2–4 in the specification:
 // - filterByGeoScore → Algorithm 2 (GeoFilter)
@@ -38,6 +42,10 @@ class ScoreCalculator {
   // Store Ω_low points/normals for later scoring. Expect points == normals rows == M.
   void setPointCloud(const Eigen::Ref<const PointMatrix>& points,
                      const Eigen::Ref<const PointMatrix>& normals);
+  void configureLogging(const std::string& logger_name,
+                        bool enable_console,
+                        const std::string& file_path,
+                        const std::string& level);
 
   void setMaxCandidates(std::int64_t max_candidates) noexcept { max_candidates_ = max_candidates; }
   // Geometry weights (Algorithm 2). Larger w_tbl prioritizes table clearance, etc.
@@ -91,6 +99,7 @@ class ScoreCalculator {
   std::int64_t max_candidates_ = 0;
   double geo_ratio_ = 1.0;
   GeoWeights geo_weights_;
+  std::shared_ptr<spdlog::logger> logger_;
 };
 #include <Eigen/Core>
 #include <Eigen/Eigenvalues>

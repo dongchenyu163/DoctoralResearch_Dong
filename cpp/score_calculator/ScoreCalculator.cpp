@@ -1,8 +1,21 @@
 #include "ScoreCalculator.h"
 
 #include <cmath>
+#include <filesystem>
 #include <numeric>
 #include <stdexcept>
+
+namespace {
+
+spdlog::level::level_enum ParseLevel(const std::string& level) {
+  try {
+    return spdlog::level::from_str(level);
+  } catch (const spdlog::spdlog_ex&) {
+    return spdlog::level::info;
+  }
+}
+
+}  // namespace
 
 // Store Ω_low points inside a PCL cloud so every algorithm reuses identical data.
 void ScoreCalculator::setPointCloud(const Eigen::Ref<const PointMatrix>& points,
@@ -26,16 +39,54 @@ void ScoreCalculator::setPointCloud(const Eigen::Ref<const PointMatrix>& points,
   cloud_->height = 1;
   cloud_->is_dense = true;
   kd_tree_.setInputCloud(cloud_);
+  if (logger_) {
+    logger_->info("Loaded point cloud with {} samples", cloud_->size());
+  }
 }
 
 void ScoreCalculator::setGeoWeights(double w_fin, double w_knf, double w_tbl) noexcept {
   geo_weights_.w_fin = w_fin;
   geo_weights_.w_knf = w_knf;
   geo_weights_.w_tbl = w_tbl;
+  if (logger_) {
+    logger_->debug("Geo weights updated to {}, {}, {}", w_fin, w_knf, w_tbl);
+  }
 }
 
 void ScoreCalculator::setGeoFilterRatio(double ratio) noexcept {
   geo_ratio_ = std::clamp(ratio, 0.0, 1.0);
+  if (logger_) {
+    logger_->debug("Geo filter ratio set to {}", geo_ratio_);
+  }
+}
+
+void ScoreCalculator::configureLogging(const std::string& logger_name,
+                                       bool enable_console,
+                                       const std::string& file_path,
+                                       const std::string& level) {
+  std::vector<spdlog::sink_ptr> sinks;
+  if (enable_console) {
+    auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    console_sink->set_pattern("[%m%d%H%M%S_%e] %v");
+    sinks.push_back(console_sink);
+  }
+  if (!file_path.empty()) {
+    std::filesystem::path path(file_path);
+    if (path.has_parent_path()) {
+      std::filesystem::create_directories(path.parent_path());
+    }
+    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(file_path, true);
+    file_sink->set_pattern("%Y-%m-%dT%H:%M:%S.%f%z %v");
+    sinks.push_back(file_sink);
+  }
+  if (sinks.empty()) {
+    logger_.reset();
+    return;
+  }
+  logger_ = std::make_shared<spdlog::logger>(logger_name, sinks.begin(), sinks.end());
+  logger_->set_level(ParseLevel(level));
+  spdlog::register_logger(logger_);
+  logger_->info("ScoreCalculator logger configured (console={}, file='{}')", enable_console, file_path);
 }
 
 namespace {
@@ -154,6 +205,9 @@ ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
     return CandidateMatrix(0, candidate_indices.cols());
   }
 
+  if (logger_) {
+    logger_->debug("GeoFilter invoked with {} rows", candidate_indices.rows());
+  }
   std::vector<RowScore> row_scores;
   row_scores.reserve(static_cast<std::size_t>(candidate_indices.rows()));
 
@@ -244,6 +298,9 @@ ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
   for (Eigen::Index i = 0; i < keep; ++i) {
     output.row(i) = candidate_indices.row(order[static_cast<std::size_t>(i)].second);
   }
+  if (logger_) {
+    logger_->info("GeoFilter kept {} rows out of {}", keep, row_scores.size());
+  }
   return output;
 }
 
@@ -254,6 +311,9 @@ Eigen::VectorXd ScoreCalculator::calcPositionalScores(
     const Eigen::Vector3d& knife_n) const {
   if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
     return Eigen::VectorXd(0);
+  }
+  if (logger_) {
+    logger_->debug("Positional score on {} rows", candidate_indices.rows());
   }
   Eigen::VectorXd scores(candidate_indices.rows());
   PointCloud subset;
@@ -309,6 +369,9 @@ Eigen::VectorXd ScoreCalculator::calcPositionalDistances(
   if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
     return Eigen::VectorXd(0);
   }
+  if (logger_) {
+    logger_->debug("Positional distance on {} rows", candidate_indices.rows());
+  }
   Eigen::VectorXd scores(candidate_indices.rows());
   PointCloud subset;
   subset.reserve(static_cast<std::size_t>(candidate_indices.cols()));
@@ -353,6 +416,9 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     double friction_angle_deg) const {
   if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
     return Eigen::VectorXd(0);
+  }
+  if (logger_) {
+    logger_->info("Dynamics scoring on {} rows; wrench norm={}", candidate_indices.rows(), wrench.norm());
   }
   const Eigen::Index rows = candidate_indices.rows();
   Eigen::VectorXd scores(rows);
@@ -422,6 +488,9 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     }
     double combined = (feasibility + balance + e_mag + e_dir + e_var) / 5.0;
     scores(i) = std::clamp(combined, 0.0, 1.0);
+  }
+  if (logger_) {
+    logger_->debug("Dynamics scoring complete");
   }
   return scores;
 }
