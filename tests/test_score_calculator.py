@@ -30,6 +30,8 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
         normals = np.ones((4, 3), dtype=np.float64)
         calc.set_point_cloud(points, normals)
         calc.set_max_candidates(1)
+        calc.set_geo_weights(1.0, 1.0, 1.0)
+        calc.set_geo_filter_ratio(1.0)
         candidates = np.array([[0, 1], [1, 2]], dtype=np.int32)
         result = calc.filter_by_geo_score(
             candidates,
@@ -39,6 +41,23 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
         )
         self.assertEqual(result.shape[0], 1)
         np.testing.assert_array_equal(result[0], np.array([0, 1], dtype=np.int32))
+
+    def test_geo_filter_prefers_higher_table_distance(self) -> None:
+        calc = score_calculator.ScoreCalculator()
+        points = np.array([[0.0, 0.0, 0.01], [0.0, 0.0, 0.02], [0.0, 0.0, 0.05]], dtype=np.float64)
+        normals = np.ones_like(points)
+        calc.set_point_cloud(points, normals)
+        calc.set_geo_weights(0.2, 0.2, 1.0)
+        calc.set_geo_filter_ratio(0.5)
+        candidates = np.array([[0, 1], [1, 2]], dtype=np.int32)
+        result = calc.filter_by_geo_score(
+            candidates,
+            np.zeros(3, dtype=np.float64),
+            np.array([0.0, 0.0, 1.0], dtype=np.float64),
+            0.0,
+        )
+        self.assertEqual(result.shape[0], 1)
+        np.testing.assert_array_equal(result[0], np.array([1, 2], dtype=np.int32))
 
 
 if __name__ == "__main__":  # pragma: no cover

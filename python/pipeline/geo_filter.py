@@ -29,6 +29,14 @@ class GeoFilterRunner:
         max_candidates = int(config.search.get("max_geo_candidates", 0))
         if max_candidates > 0:
             self.calculator.set_max_candidates(max_candidates)
+        geo_weights = config.weights.get("geo_score", {})
+        self.calculator.set_geo_weights(
+            float(geo_weights.get("w_fin", 1.0)),
+            float(geo_weights.get("w_knf", 1.0)),
+            float(geo_weights.get("w_tbl", 1.0)),
+        )
+        geo_ratio = float(config.search.get("geo_filter_ratio", 1.0))
+        self.calculator.set_geo_filter_ratio(geo_ratio)
 
     def set_point_cloud(self, preprocess_result: PreprocessResult) -> None:
         self.calculator.set_point_cloud(preprocess_result.points_low, preprocess_result.normals_low)
