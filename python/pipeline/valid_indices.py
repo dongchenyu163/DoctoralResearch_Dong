@@ -68,6 +68,7 @@ def compute_valid_indices(
         int(penetration_mask.sum()),
         int(indices.size),
     )
+    LOGGER.debug("Penetration plane normal=%s", np.array2string(penetration_plane.normal, precision=4, separator=","))
     if indices.size == 0:
         LOGGER.error("Ωg empty after filters (table>=%.4f knife<=%.4f tolerance=%.5f)", table_threshold, knife_threshold, plane_tolerance)
     if center_mask.sum() == 0 or penetration_mask.sum() == 0:
