@@ -8,6 +8,7 @@ from python.instrumentation.timing import TimingRecorder
 from python.pipeline.accumulate import build_all_combinations
 from python.pipeline.geo_filter import GeoFilterRunner
 from python.pipeline.preprocess import PreprocessResult, RawPointCloud, load_point_cloud, preprocess_point_cloud
+from python.pipeline.trajectory import TrajectoryNode, build_test_trajectory
 from python.pipeline.valid_indices import ValidIndicesResult, compute_valid_indices
 from python.utils.config_loader import Config
 
@@ -55,8 +56,10 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
         mesh_boolean_summary["purified_faces"] = mesh_boolean_summary["contact_faces"]
 
     timestep_reports: List[Dict[str, object]] = []
+    trajectory_nodes: List[TrajectoryNode] = build_test_trajectory(preprocess_result, config, recorder)
+
     with recorder.section("python/trajectory_loop"):
-        for step_idx in range(1):
+        for step_idx, node in enumerate(trajectory_nodes):
             valid_indices_count = int(valid_result.indices.size)
             with recorder.section("python/accumulate_scores"):
                 timestep_reports.append(
@@ -64,6 +67,8 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
                         "timestep": step_idx,
                         "valid_indices": valid_indices_count,
                         "geo_filter_ratio": config.search.get("geo_filter_ratio"),
+                        "pose": node.pose[:3, 3].tolist(),
+                        "velocity": node.velocity.tolist(),
                     }
                 )
 
@@ -76,6 +81,7 @@ def run_pipeline(config: Config, recorder: TimingRecorder) -> Dict[str, object]:
         "combinations": combinations_summary,
         "contact_surface": mesh_boolean_summary,
         "geo_filter": {"candidates_after_cpp": int(filtered_candidates.shape[0])},
+        "trajectory": {"nodes": len(trajectory_nodes)},
         "timesteps": timestep_reports,
     }
     return result_summary

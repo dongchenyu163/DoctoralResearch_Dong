@@ -68,6 +68,7 @@ class Config:
     physics: Dict[str, Any]
     environment: Dict[str, Any]
     search: Dict[str, Any]
+    trajectory: Dict[str, Any]
     instrumentation: InstrumentationConfig
     seed: int
 
@@ -80,6 +81,7 @@ class Config:
             physics=dict(data["physics"]),
             environment=dict(data.get("environment", {})),
             search=dict(data["search"]),
+            trajectory=dict(data.get("trajectory", {})),
             instrumentation=InstrumentationConfig.from_dict(data["instrumentation"]),
             seed=int(data.get("seed", 42)),
         )
@@ -115,6 +117,14 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "knife_clearance": 0.002,
         "max_geo_candidates": 2048,
     },
+    "trajectory": {
+        "offsets": [
+            [0.05, 0.0, 0.004],
+            [-0.05, 0.0, 0.001],
+            [0.05, 0.0, -0.003],
+        ],
+        "scalar_velocities": [0.01, 0.01, 0.01],
+    },
     "instrumentation": {
         "enable_timing": True,
         "enable_detailed_timing": True,
@@ -129,6 +139,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 "downsample": True,
                 "estimate_normals": True,
                 "trajectory_loop": True,
+                "trajectory_build": True,
                 "valid_indices": True,
                 "compute_valid_indices_total": True,
                 "valid_filter_table": True,
