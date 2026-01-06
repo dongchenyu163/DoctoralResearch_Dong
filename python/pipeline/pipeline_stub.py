@@ -110,7 +110,10 @@ def run_pipeline(
             knife_normal = node.pose[:3, 2]
             knife_instance = knife_model.instantiate(node.pose)
             if pc_logger and preprocess_result.points_high.size:
-                pc_logger.save_point_cloud("omega_high", step_idx, preprocess_result.points_high)
+                if preprocess_result.points_high.size == 0:
+                    logging.getLogger("pipeline.debug_pc").error("omega_high stage=%d has zero points", step_idx)
+                else:
+                    pc_logger.save_point_cloud("omega_high", step_idx, preprocess_result.points_high)
             # PREPARE_DATA line 4: recompute Ωg for each timestep using knife plane.
             valid_result = compute_valid_indices(preprocess_result.points_low, config, recorder, knife_instance)
             VALID_LOGGER.info(
@@ -186,8 +189,11 @@ def run_pipeline(
             CONTACT_LOGGER.debug("Step %d contact metadata=%s", step_idx, contact_surface.metadata)
             if pc_logger and pc_logger.enabled_for("knife_mesh"):
                 pc_logger.save_mesh("knife_mesh", step_idx, knife_instance.mesh)
-            if pc_logger and pc_logger.enabled_for("food_mesh") and preprocess_result.food_mesh is not None:
-                pc_logger.save_mesh("food_mesh", step_idx, preprocess_result.food_mesh)
+            if pc_logger and pc_logger.enabled_for("food_mesh"):
+                if preprocess_result.food_mesh is None:
+                    logging.getLogger("pipeline.debug_pc").error("food_mesh missing at step %d", step_idx)
+                else:
+                    pc_logger.save_mesh("food_mesh", step_idx, preprocess_result.food_mesh)
             if pc_logger and pc_logger.enabled_for("contact_faces"):
                 contact_points = _flatten_contact_faces(contact_surface.faces)
                 omega_points = preprocess_result.points_low[valid_result.indices] if valid_result.indices.size else np.empty((0, 3))

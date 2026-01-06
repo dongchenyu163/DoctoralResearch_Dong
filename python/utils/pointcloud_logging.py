@@ -55,7 +55,7 @@ class PointCloudDebugSaver:
         if not self.enabled_for(stage):
             return None
         if points.size == 0:
-            LOGGER.warning("Skip saving stage %s at step %d because point cloud empty", stage, timestep)
+            LOGGER.error("Point cloud stage=%s step=%d empty; nothing saved", stage, timestep)
             return None
         if colors is None:
             colors = np.ones_like(points, dtype=np.float64)
@@ -69,19 +69,21 @@ class PointCloudDebugSaver:
             cloud.points = o3d.utility.Vector3dVector(points.astype(np.float64))
             cloud.colors = o3d.utility.Vector3dVector(np.clip(colors, 0.0, 1.0))
             o3d.io.write_point_cloud(str(path), cloud, write_ascii=False)
+        LOGGER.debug("Saved point cloud stage=%s step=%d to %s", stage, timestep, path)
         return path
 
     def save_mesh(self, stage: str, timestep: int, mesh: "trimesh.Trimesh") -> Optional[Path]:
         if not self.enabled_for(stage):
             return None
         if mesh is None or mesh.is_empty:
-            LOGGER.warning("Skip saving mesh stage %s at step %d because mesh empty", stage, timestep)
+            LOGGER.error("Mesh stage=%s step=%d empty; nothing saved", stage, timestep)
             return None
         path = self.settings.output_dir / f"step_{timestep:03d}_{stage}.obj"
         if trimesh is None:
             LOGGER.warning("trimesh not available; skip saving %s", path)
             return None
         mesh.export(path)
+        LOGGER.debug("Saved mesh stage=%s step=%d to %s", stage, timestep, path)
         return path
 
 
