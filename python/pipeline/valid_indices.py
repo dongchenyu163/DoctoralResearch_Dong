@@ -61,7 +61,7 @@ def compute_valid_indices(
         with recorder.section("python/valid_filter_slice_plane"):
             penetration_mask = _half_space_mask(points_low, penetration_plane, plane_tolerance)
 
-    valid_mask = table_mask & knife_mask & center_mask & penetration_mask
+    valid_mask = table_mask & knife_mask & ~center_mask & ~penetration_mask
     indices = np.nonzero(valid_mask)[0].astype(np.int32)
     LOGGER.info(
         "Ωg built: table_pass=%d knife_pass=%d center_pass=%d slice_pass=%d survivors=%d",
