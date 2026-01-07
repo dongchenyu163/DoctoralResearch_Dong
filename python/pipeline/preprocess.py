@@ -308,6 +308,7 @@ def _build_mesh_greedy(points: np.ndarray, method_cfg: Dict[str, object], config
         LOGGER.error("py_gpt returned empty face set; skip food mesh build")
         return None
     mesh = trimesh.Trimesh(vertices=pts, faces=np.asarray(faces, dtype=np.int64), process=False)
+    mesh.fix_normals()
     LOGGER.info(
         "Food mesh (greedy) built via py_gpt: vertices=%d faces=%d radius=%.4f max_nn=%d",
         mesh.vertices.shape[0],
