@@ -3,7 +3,7 @@
     "point_cloud_path": "/home/cookteam/Workspace/cookteam/PointClouds/ICRA2024/2023_02_28_22_35_40_720564/FoodShapeProcess_NoModel_SmoothedPC.pcd",
     "point_cloud_path2": "/home/cookteam/Workspace/CPP_Program/python_force_calc_2026/tests/points.pcd",
     "synthetic_point_count": 512,
-    "downsample_num": 200,
+    "downsample_num": 600,
     "normal_estimation_radius": 0.01,
     "high_res_voxel": 0.002,
     "mesh": {
