@@ -41,13 +41,21 @@ def extract_contact_surface(
     with recorder.section("python/contact_surface_total"):
         with recorder.section("python/mesh_boolean"):
             try:
-                intersection = base_mesh.intersection(knife_instance.mesh, engine='blender', check_volume=False, use_exact=True)
+                # knife_instance.mesh.fix_normals()
+                intersection = base_mesh.intersection(knife_instance.mesh, engine='blender', check_volume=True, use_exact=True)
+                if intersection.is_empty:
+                    intersection = base_mesh.intersection(knife_instance.mesh, engine='manifold', check_volume=True, use_exact=True)
+                # intersection = trimesh.boolean.intersection([base_mesh, knife_instance.mesh], engine='blender', check_volume=False, use_exact=True)
                 if isinstance(intersection, (list, tuple)):
                     intersection = trimesh.util.concatenate(intersection)
             except Exception as exc:  # pragma: no cover - backend specific
                 LOGGER.error("Mesh boolean failed (%s); returning empty contact surface", exc)
                 LOGGER.error("Mesh boolean failed (%s); export PATH=${PATH}:/home/cookteam/Documents/blender-4.5.3-linux-x64", exc)
-                intersection = None
+                raise RuntimeError("Empty intersection mesh from boolean operation")
+
+            if intersection is None or intersection.is_empty:
+                LOGGER.error("Intersection mesh empty; no contact surfaces found")
+                raise RuntimeError("Empty intersection mesh from boolean operation")
         faces = _filter_faces_with_planes(
             intersection,
             knife_instance.center_plane,

@@ -104,6 +104,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 },
                 "normal_radius": 0.01,
                 "normal_max_nn": 60,
+                "fill_holes": {"enabled": True, "skip_longest": True, "close_largest": True, "close_offset_z": 0.01},
                 "gpt_params": {
                     "search_radius": 0.025,
                     "mu": 2.5,
