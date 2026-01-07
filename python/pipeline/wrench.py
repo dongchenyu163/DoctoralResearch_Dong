@@ -45,10 +45,13 @@ def compute_wrench(surface: ContactSurfaceResult, config: Config, step_idx: int 
     """
     step_label = f"Step {step_idx} " if step_idx is not None else ""
     log_boxed_heading(LOGGER, "4.1", f"{step_label}Algorithm 4 Knife Wrench 估计")
-    pressure = float(config.physics.get("pressure_distribution", 1000.0))
-    friction_coef = float(config.physics.get("friction_coef", 0.5))
-    fracture_toughness = float(config.physics.get("fracture_toughness", 500.0))
-    planar_only = bool(config.physics.get("planar_constraint", True))
+    
+    # 从配置中提取物理参数
+    pressure = float(config.physics.get("pressure_distribution", 1000.0))  # 压强分布 (Pa)
+    friction_coef = float(config.physics.get("friction_coef", 0.5))  # 摩擦系数 μ
+    fracture_toughness = float(config.physics.get("fracture_toughness", 500.0))  # 断裂韧性 (N/m)
+    planar_only = bool(config.physics.get("planar_constraint", True))  # 是否仅保留平面约束分量
+    
     LOGGER.debug(
         "Knife wrench params pressure=%.3f fracture=%.3f μ=%.3f planar_only=%s components=%d",
         pressure,
@@ -58,60 +61,89 @@ def compute_wrench(surface: ContactSurfaceResult, config: Config, step_idx: int 
         len(surface.faces),
     )
 
-    fracture_step = float(config.physics.get("fracture_step", 0.001))
+    # 提取断裂力和摩擦力网格细化参数
+    fracture_step = float(config.physics.get("fracture_step", 0.001))  # 断裂边缘采样步长 (m)
     friction_cfg = config.physics.get("friction_mesh", {})
-    friction_sample = int(friction_cfg.get("sample_count", 5000))
-    friction_voxel = float(friction_cfg.get("voxel_size", 0.002))
-    friction_edge = float(friction_cfg.get("edge_delta", 0.002))
+    friction_sample = int(friction_cfg.get("sample_count", 5000))  # 摩擦面采样点数
+    friction_voxel = float(friction_cfg.get("voxel_size", 0.002))  # 体素下采样尺寸 (m)
+    friction_edge = float(friction_cfg.get("edge_delta", 0.002))  # 边缘加密步长 (m)
 
+    # 初始化累积变量：总力、总扭矩和各面详细信息
     total_force = np.zeros(3, dtype=np.float64)
     total_torque = np.zeros(3, dtype=np.float64)
-    face_details = []
+    face_details = []  # 存储每个面的断裂力、摩擦力、扭矩和面积
 
+    # ===== 1. 计算刀刃断裂力 =====
+    # 从两个主接触面的交线构建刀刃线，沿线分布断裂力
     edge_line = _build_edge_line(surface.faces, step=fracture_step)
     fracture_sum = np.zeros(3, dtype=np.float64)
     fracture_torque = np.zeros(3, dtype=np.float64)
+    
     if edge_line is not None:
-        direction = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+        direction = np.array([0.0, 0.0, 1.0], dtype=np.float64)  # 断裂力方向（+Z）
         for point in edge_line:
+            # 每个采样点施加 fracture_toughness * step 的力
             force = fracture_toughness * fracture_step * direction
             fracture_sum += force
-            fracture_torque += np.cross(point, force)
+            fracture_torque += np.cross(point, force)  # 累积扭矩 τ = r × F
     else:
         LOGGER.error("Knife edge line unavailable; fracture force defaults to zero")
 
+    # ===== 2. 遍历每个接触面簇，计算摩擦力 =====
     for cluster in surface.faces:
         friction_sum = np.zeros(3, dtype=np.float64)
         torque_sum = np.zeros(3, dtype=np.float64)
         total_area = 0.0
+        
+        # 构建均匀采样的接触面网格（包含表面采样、体素下采样和边缘加密）
         mesh = _build_uniform_contact_mesh(cluster, friction_sample, friction_voxel, friction_edge)
         triangles = mesh.triangles if mesh is not None else cluster.reshape((-1, 3, 3))
+        
+        # 遍历该簇的所有三角形面片
         for tri in triangles:
             a, b, c = tri
+            # 计算法向量和面积
             normal_vec = np.cross(b - a, c - a)
             area = 0.5 * np.linalg.norm(normal_vec)
             if not np.isfinite(area) or area < 1e-9:
-                continue
+                continue  # 跳过退化三角形
             total_area += area
+            
+            # 归一化法向量
             normal = normal_vec / (np.linalg.norm(normal_vec) + 1e-12)
-            centroid = (a + b + c) / 3.0
+            centroid = (a + b + c) / 3.0  # 三角形质心
+            
+            # 计算法向压力：F_n = pressure × area × normal
             normal_force = pressure * area * normal
+            
+            # 计算切向摩擦力方向（与法向垂直）
             tangent = np.cross(normal, np.array([0.0, 0.0, 1.0]))
-            if np.linalg.norm(tangent) < 1e-9:
+            if np.linalg.norm(tangent) < 1e-9:  # 如果法向接近Z轴，换用Y轴
                 tangent = np.cross(normal, np.array([0.0, 1.0, 0.0]))
             tangent = tangent / (np.linalg.norm(tangent) + 1e-12)
+            
+            # 计算摩擦力：F_f = μ × |F_n| × tangent
             friction_force = friction_coef * np.linalg.norm(normal_force) * tangent
             friction_sum += friction_force
-            torque_sum += np.cross(centroid, friction_force)
+            torque_sum += np.cross(centroid, friction_force)  # 累积扭矩
+        
+        # 记录该面簇的详细信息（断裂力、摩擦力、总扭矩、总面积）
         face_details.append((fracture_sum.copy(), friction_sum.copy(), fracture_torque.copy() + torque_sum.copy(), total_area))
+        
+        # 累加到全局总力和总扭矩
         total_force += fracture_sum + friction_sum
         total_torque += fracture_torque + torque_sum
 
+    # ===== 3. 组装最终扭矩向量 =====
     if not face_details:
         LOGGER.warning("未检测到接触面，返回零扭矩")
+    
+    # 构造6维扭矩向量 [Fx, Fy, Fz, Tx, Ty, Tz]
     wrench = np.zeros(6, dtype=np.float64)
-    wrench[:3] = total_force
-    wrench[3:] = total_torque
+    wrench[:3] = total_force  # 前3维：合力
+    wrench[3:] = total_torque  # 后3维：合扭矩
+    
+    # 输出各面簇的详细信息
     for idx, (fracture_vec, friction_vec, torque_vec, area_total) in enumerate(face_details):
         LOGGER.info(
             "Face %02d 切割力=%s 摩擦力=%s 合扭矩=%s area=%.6f",
@@ -122,11 +154,15 @@ def compute_wrench(surface: ContactSurfaceResult, config: Config, step_idx: int 
             area_total,
         )
     LOGGER.info("原始合外力=%s 合扭矩=%s", _format_vec(total_force), _format_vec(total_torque))
+    
+    # ===== 4. 应用平面约束（可选） =====
+    # 根据规格书§3.4，平面约束会将Z向力和Roll/Pitch扭矩置零
     if planar_only:
-        wrench[2] = 0.0
-        wrench[3] = 0.0
-        wrench[4] = 0.0
+        wrench[2] = 0.0   # Fz = 0
+        wrench[3] = 0.0   # Tx (Roll) = 0
+        wrench[4] = 0.0   # Ty (Pitch) = 0
         LOGGER.info("planar_only→处理后的合外力=%s 合扭矩=%s", _format_vec(wrench[:3]), _format_vec(wrench[3:]))
+    
     LOGGER.debug("Final wrench vector=%s", _format_vec(wrench))
     return wrench
 
