@@ -3,6 +3,7 @@
   "output_dir": "debug_pc_calc_data",
   "stages": {
     "omega_g": true,
+    "omega_low": true,
     "omega_high": true,
     "contact_faces": true,
     "knife_mesh": true,

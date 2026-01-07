@@ -103,6 +103,8 @@ def run_pipeline(
 
     if pc_logger and pc_logger.enabled_for("omega_high") and preprocess_result.points_high.size:
         pc_logger.save_point_cloud("omega_high", -1, preprocess_result.points_high)
+    if pc_logger and pc_logger.enabled_for("omega_low") and preprocess_result.points_low.size:
+        pc_logger.save_point_cloud("omega_low", -1, preprocess_result.points_low)
     log_boxed_heading(LOGGER, "3", "TRAJECTORY LOOP / 多阶段计算")
     with recorder.section("python/trajectory_loop"):
         for step_idx, node in enumerate(trajectory_nodes):
