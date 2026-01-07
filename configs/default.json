@@ -57,7 +57,7 @@
     "pressure_distribution": 3000.0,
     "planar_constraint": true,
     "fracture_step": 0.001,
-    "debug_friction_contact_viz": false,
+    "debug_friction_contact_viz": true,
     "friction_mesh": {
       "sample_count": 5000,
       "voxel_size": 0.002,
