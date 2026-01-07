@@ -505,6 +505,7 @@ def _show_geo_filter_debug(
         SCORES_LOGGER.warning("Geo filter debug order mismatch (order=%d rows=%d)", order.size, candidate_matrix.shape[0])
         return
     if high_scores:
+        # Random sampling from top geo_ratio fraction:
         ratio = float(np.clip(geo_ratio, 0.0, 1.0))
         top_count = max(1, int(np.round(ratio * order.size)))
         top_slice = order[:top_count]
@@ -513,7 +514,12 @@ def _show_geo_filter_debug(
             return
         rng = np.random.default_rng(seed)
         chosen = rng.choice(top_slice, size=pick, replace=False)
+
+        # Top k directly
+        # chosen = order[:min(k, order.size)]
+
     else:
+        # Random sampling from bottom geo_ratio fraction:
         ratio = float(np.clip(1 - geo_ratio, 0.0, 1.0))
         back_count = max(1, int(np.round(ratio * order.size)))
         back_count = min(back_count, k * 10)  # limit to avoid too large random pool
@@ -524,6 +530,7 @@ def _show_geo_filter_debug(
         rng = np.random.default_rng(seed)
         chosen = rng.choice(back_slice, size=pick, replace=False)
 
+        # Bottom k directly
         # chosen = order[-min(k, order.size):]
         # chosen = chosen[::-1]
 
