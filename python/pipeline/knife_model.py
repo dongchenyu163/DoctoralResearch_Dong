@@ -42,8 +42,8 @@ class KnifeInstance:
         pos_side = float(np.dot(self.positive_plane.point - center.point, center.normal))
         neg_side = float(np.dot(self.negative_plane.point - center.point, center.normal))
         plane = self.positive_plane if pos_side < neg_side else self.negative_plane
-        normal = center.normal.copy()
-        if float(np.dot(normal, center.normal)) < 0.0:
+        normal = plane.normal.copy()
+        if float(np.dot(normal, plane.normal)) < 0.0:
             normal = -normal
         return PlaneInstance(point=plane.point, normal=normal)
 
