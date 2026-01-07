@@ -119,6 +119,8 @@ def compute_wrench(
         # 构建均匀采样的接触面网格（包含表面采样、体素下采样和边缘加密）
         mesh = _build_uniform_contact_mesh(cluster, friction_sample, friction_voxel, friction_edge)
         triangles = mesh.triangles if mesh is not None else cluster.reshape((-1, 3, 3))
+        if bool(config.physics.get("debug_friction_contact_viz", False)):
+            _show_friction_contact_debug(mesh, surface.mesh)
         
         # 遍历该簇的所有三角形面片
         for tri in triangles:
@@ -238,6 +240,31 @@ def _flatten_faces(face_groups: List[np.ndarray]) -> np.ndarray:
     if not points:
         return np.empty((0, 3), dtype=np.float64)
     return np.vstack(points)
+
+
+def _show_friction_contact_debug(mesh: Optional["trimesh.Trimesh"], surface_mesh: Optional["trimesh.Trimesh"]) -> None:
+    if trimesh is None:
+        LOGGER.warning("trimesh unavailable; skip friction contact visualization")
+        return
+    if mesh is None and surface_mesh is None:
+        LOGGER.warning("No meshes for friction contact visualization")
+        return
+    scene = trimesh.Scene()
+    if surface_mesh is not None:
+        surface_copy = surface_mesh.copy()
+        surface_copy.apply_translation([0.0, 0.02, 0.0])
+        surface_edges = surface_copy.edges_unique
+        surface_entities = [trimesh.path.entities.Line(edge) for edge in surface_edges]
+        surface_wireframe = trimesh.path.Path3D(entities=surface_entities, vertices=surface_copy.vertices)
+        scene.add_geometry(surface_wireframe)
+        scene.add_geometry(surface_copy)
+    if mesh is not None:
+        scene.add_geometry(mesh)
+        edges = mesh.edges_unique
+        entities = [trimesh.path.entities.Line(edge) for edge in edges]
+        wireframe = trimesh.path.Path3D(entities=entities, vertices=mesh.vertices)
+        scene.add_geometry(wireframe)
+    scene.show()
 
 
 def _build_edge_line(face_groups: List[np.ndarray], step: float) -> Optional[np.ndarray]:
