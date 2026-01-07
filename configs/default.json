@@ -2,9 +2,9 @@
   "preprocess": {
     "point_cloud_path": "/home/cookteam/Workspace/CPP_Program/python_force_calc_2026/tests/points.pcd",
     "synthetic_point_count": 512,
-    "downsample_num": 100,
+    "downsample_num": 200,
     "normal_estimation_radius": 0.01,
-    "high_res_voxel": 0.002,
+    "high_res_voxel": 0.003,
     "mesh": {
       "enabled": true,
       "method": "greedy",
@@ -80,9 +80,9 @@
   },
   "trajectory": {
     "offsets": [
-      [-0.05, 0.0, 0.004],
-      [-0.10, 0.0, -0.003],
-      [-0.05, 0.0, -0.006]
+      [-0.05, 0.01, 0.003],
+      [-0.10, 0.01, -0.003],
+      [-0.05, 0.01, -0.006]
     ],
     "scalar_velocities": [0.01, 0.01, 0.01]
   },
