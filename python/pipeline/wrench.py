@@ -12,7 +12,7 @@ from python.utils.logging_sections import log_boxed_heading
 LOGGER = logging.getLogger("pipeline.wrench")
 
 
-def compute_wrench(surface: ContactSurfaceResult, config: Config) -> np.ndarray:
+def compute_wrench(surface: ContactSurfaceResult, config: Config, step_idx: int | None = None) -> np.ndarray:
     """Compute simplified fracture + friction wrench (Algorithm 4 input).
 
     Args:
@@ -26,7 +26,8 @@ def compute_wrench(surface: ContactSurfaceResult, config: Config) -> np.ndarray:
     Returns:
         6-vector `[Fx, Fy, Fz, Tx, Ty, Tz]`.
     """
-    log_boxed_heading(LOGGER, "4.1", "Algorithm 4 Knife Wrench 估计")
+    step_label = f"Step {step_idx} " if step_idx is not None else ""
+    log_boxed_heading(LOGGER, "4.1", f"{step_label}Algorithm 4 Knife Wrench 估计")
     pressure = float(config.physics.get("pressure_distribution", 1000.0))
     friction_coef = float(config.physics.get("friction_coef", 0.5))
     fracture_toughness = float(config.physics.get("fracture_toughness", 500.0))

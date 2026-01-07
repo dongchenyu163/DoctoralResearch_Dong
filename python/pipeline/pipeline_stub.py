@@ -188,7 +188,7 @@ def run_pipeline(
                     timestep_reports.append(step_report)
                 continue
 
-            log_boxed_heading(CONTACT_LOGGER, f"3.{step_idx + 1}.1", "Contact Surface + Wrench")
+            log_boxed_heading(CONTACT_LOGGER, f"3.{step_idx + 1}.1", f"Step {step_idx} Contact Surface + Wrench")
             contact_surface: ContactSurfaceResult = extract_contact_surface(preprocess_result, recorder, knife_instance)
             if pc_logger:
                 if pc_logger.enabled_for("boolean_base_mesh") and preprocess_result.food_mesh is not None:
@@ -210,7 +210,7 @@ def run_pipeline(
                         if mesh is not None:
                             pc_logger.save_mesh(stage_name, step_idx, mesh)
             with recorder.section("python/wrench_compute"):
-                wrench = compute_wrench(contact_surface, config)
+                wrench = compute_wrench(contact_surface, config, step_idx=step_idx)
             last_contact_metadata = dict(contact_surface.metadata)
             last_wrench = wrench
             CONTACT_LOGGER.info(
@@ -227,7 +227,7 @@ def run_pipeline(
                     CONTACT_LOGGER.info("Step %d contact side %d triangles=%d", step_idx, side_idx, int(count))
 
             # Algorithm 2: Geometry filter (Table 1 section Ωg).
-            log_boxed_heading(SCORES_LOGGER, f"3.{step_idx + 1}.2", "GeoFilter + Scores")
+            log_boxed_heading(SCORES_LOGGER, f"3.{step_idx + 1}.2", f"Step {step_idx} GeoFilter + Scores")
             filtered_candidates = geo_filter.run(valid_result, valid_candidates, recorder)
             candidate_lookup = _build_row_lookup(valid_candidates, valid_ids)
             filtered_ids = _rows_to_ids(filtered_candidates, candidate_lookup)

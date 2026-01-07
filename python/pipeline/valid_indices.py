@@ -98,4 +98,4 @@ def _normalize_plane(plane: PlaneInstance) -> PlaneInstance:
 
 def _half_space_mask(points: np.ndarray, plane: PlaneInstance, tolerance: float) -> np.ndarray:
     signed = (points - plane.point) @ plane.normal
-    return signed <= tolerance
+    return signed >= -tolerance
