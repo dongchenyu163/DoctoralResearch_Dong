@@ -83,6 +83,7 @@ def build_knife_model(config: Config, reference_points: np.ndarray) -> KnifeMode
         base_length = _estimate_length(reference_points, float(knife_cfg.get("length_margin", 0.05)))
     cross_length = float(knife_cfg.get("cross_section_length", base_length))
     mesh, planes = _create_wedge_mesh(float(cross_length), height, edge_angle)
+    mesh.fix_normals()
     LOGGER.debug("Knife mesh built length=%.4f height=%.4f edge_angle=%.2f", float(base_length), height, edge_angle)
     return KnifeModel(mesh=mesh, center_plane=planes[0], positive_plane=planes[1], negative_plane=planes[2])
 
