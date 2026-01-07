@@ -140,6 +140,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "finger_count": 2,
         "table_clearance": 0.002,
         "knife_clearance": 0.002,
+        "debug_valid_indices_viz": False,
+        "debug_geo_filter_viz": False,
+        "debug_geo_filter_k": 3,
         "max_geo_candidates": 2048,
     },
     "trajectory": {

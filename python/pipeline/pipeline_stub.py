@@ -231,6 +231,31 @@ def run_pipeline(
             # Algorithm 2: Geometry filter (Table 1 section Ωg).
             log_boxed_heading(SCORES_LOGGER, f"3.{step_idx + 1}.2", f"Step {step_idx} GeoFilter + Scores")
             filtered_candidates = geo_filter.run(valid_result, valid_candidates, recorder)
+            if bool(config.search.get("debug_geo_filter_viz", False)):
+                masked_candidates = geo_filter.mask_candidates(valid_candidates, valid_result.indices)
+                order = geo_filter.last_geo_order()
+                _show_geo_filter_debug(
+                    preprocess_result.points_low,
+                    valid_result.indices,
+                    masked_candidates,
+                    order,
+                    int(config.search.get("debug_geo_filter_k", 3)),
+                    float(config.search.get("geo_filter_ratio", 1.0)),
+                    int(config.seed),
+                    high_scores=True,
+                    window_name=f"GeoFilter High Scores step {step_idx}",
+                )
+                _show_geo_filter_debug(
+                    preprocess_result.points_low,
+                    valid_result.indices,
+                    masked_candidates,
+                    order,
+                    int(config.search.get("debug_geo_filter_k", 3)),
+                    float(config.search.get("geo_filter_ratio", 1.0)),
+                    int(config.seed),
+                    high_scores=False,
+                    window_name=f"GeoFilter Low Scores step {step_idx}",
+                )
             candidate_lookup = _build_row_lookup(valid_candidates, valid_ids)
             filtered_ids = _rows_to_ids(filtered_candidates, candidate_lookup)
 
@@ -414,6 +439,148 @@ def _combine_points_for_debug(omega_points: np.ndarray, contact_points: np.ndarr
     if not point_blocks:
         return np.empty((0, 3)), np.empty((0, 3))
     return np.vstack(point_blocks), np.vstack(color_blocks)
+
+
+def _show_geo_filter_debug(
+    points_low: np.ndarray,
+    omega_indices: np.ndarray,
+    candidate_matrix: np.ndarray,
+    order: np.ndarray,
+    k: int,
+    geo_ratio: float,
+    seed: int,
+    high_scores: bool,
+    window_name: str,
+) -> None:
+    try:
+        import open3d as o3d
+    except ImportError:  # pragma: no cover
+        SCORES_LOGGER.warning("open3d unavailable; skip geo filter debug visualization")
+        return
+    
+    def make_R_align_z_to_v(v, up=np.array([0.0, 1.0, 0.0])):
+        v = np.asarray(v, dtype=float)
+        z = v / np.linalg.norm(v)
+
+        up = np.asarray(up, dtype=float)
+        # 若 up 与 z 太接近平行，换一个 up
+        if abs(np.dot(up, z)) > 0.99:
+            up = np.array([1.0, 0.0, 0.0])
+
+        x = np.cross(up, z)
+        x /= np.linalg.norm(x)
+        y = np.cross(z, x)
+
+        R = np.column_stack([x, y, z])  # ✅ R[:,2] == z == normalize(v)
+        return R
+    
+    def line_to_cylinder(p0, p1, radius=0.0002, resolution=8):
+        length = np.linalg.norm(p1 - p0)
+        cylinder = o3d.geometry.TriangleMesh.create_cylinder(
+            radius=radius,
+            height=length,
+            resolution=resolution
+        )
+        cylinder.compute_vertex_normals()
+
+        # 对齐方向
+        z = np.array([0, 0, 1])
+        v = p1 - p0
+        v /= np.linalg.norm(v)
+        axis = np.cross(z, -v)
+        # angle = np.arccos(np.dot(z, -v))
+        if np.linalg.norm(axis) > 1e-6:
+            R = make_R_align_z_to_v(v, up=z)
+            cylinder.rotate(R, center=np.zeros(3))
+
+        cylinder.translate((p0 + p1) / 2)
+        return cylinder
+
+    if k <= 0:
+        return
+    if points_low.size == 0 or omega_indices.size == 0 or candidate_matrix.size == 0:
+        SCORES_LOGGER.warning("Geo filter debug visualization skipped (empty data)")
+        return
+    if order.size != candidate_matrix.shape[0]:
+        SCORES_LOGGER.warning("Geo filter debug order mismatch (order=%d rows=%d)", order.size, candidate_matrix.shape[0])
+        return
+    if high_scores:
+        ratio = float(np.clip(geo_ratio, 0.0, 1.0))
+        top_count = max(1, int(np.round(ratio * order.size)))
+        top_slice = order[:top_count]
+        pick = min(k, top_slice.size)
+        if pick <= 0:
+            return
+        rng = np.random.default_rng(seed)
+        chosen = rng.choice(top_slice, size=pick, replace=False)
+    else:
+        ratio = float(np.clip(1 - geo_ratio, 0.0, 1.0))
+        back_count = max(1, int(np.round(ratio * order.size)))
+        back_count = min(back_count, k * 10)  # limit to avoid too large random pool
+        back_slice = order[-back_count:]
+        pick = min(k, back_slice.size)
+        if pick <= 0:
+            return
+        rng = np.random.default_rng(seed)
+        chosen = rng.choice(back_slice, size=pick, replace=False)
+
+        # chosen = order[-min(k, order.size):]
+        # chosen = chosen[::-1]
+
+    omega_points = points_low[omega_indices]
+    omega_pcd = o3d.geometry.PointCloud()
+    omega_pcd.points = o3d.utility.Vector3dVector(omega_points.astype(np.float64))
+    omega_pcd.paint_uniform_color([0.15, 0.15, 0.15])
+    geometries = [omega_pcd]
+    palette = [
+        [0.9, 0.1, 0.1],
+        [0.1, 0.7, 0.2],
+        [0.1, 0.2, 0.9],
+        [0.9, 0.6, 0.1],
+        [0.6, 0.2, 0.7],
+        [0.1, 0.8, 0.8],
+        [0.8, 0.8, 0.1],
+        [0.5, 0.1, 0.6],
+        [0.2, 0.6, 0.9],
+        [0.9, 0.3, 0.5],
+        [0.3, 0.9, 0.4],
+        [0.4, 0.3, 0.9],
+        [0.9, 0.9, 0.3],
+        [0.2, 0.9, 0.7],
+        [0.7, 0.2, 0.9],
+        [0.3, 0.5, 0.9],
+        [0.9, 0.5, 0.3],
+        [0.2, 0.8, 0.5],
+        [0.5, 0.8, 0.2],
+        [0.8, 0.2, 0.4],
+    ]
+    for i, row_idx in enumerate(chosen):
+        candidate = candidate_matrix[row_idx]
+        candidate_points = points_low[candidate]
+        color = palette[i % len(palette)]
+        cand_pcd = o3d.geometry.PointCloud()
+        cand_pcd.points = o3d.utility.Vector3dVector(candidate_points.astype(np.float64))
+        cand_pcd.paint_uniform_color(color)
+        for a in range(candidate.shape[0]):
+            for b in range(a + 1, candidate.shape[0]):
+                cylinder = line_to_cylinder(candidate_points[a], candidate_points[b])
+                cylinder.paint_uniform_color(color)
+                geometries.append(cylinder)
+        geometries.append(cand_pcd)
+    
+    vis = o3d.visualization.Visualizer()
+    vis.create_window(window_name)
+    for geometry in geometries:
+        vis.add_geometry(geometry)
+
+    # Access and set line width
+    opt = vis.get_render_option()
+    opt.point_size = 17.0  # Default is typically 5.0
+
+    vis.run()
+    vis.destroy_window()
+    # o3d.visualization.draw_geometries(geometries, window_name=window_name)
+
 
 
 def _faces_to_trimesh(face_block: np.ndarray):

@@ -79,6 +79,8 @@
     "knife_clearance": 0.002,
     "max_geo_candidates": 2048,
     "debug_valid_indices_viz": false,
+    "debug_geo_filter_viz": true,
+    "debug_geo_filter_k": 24
   },
   "trajectory": {
     "offsets": [

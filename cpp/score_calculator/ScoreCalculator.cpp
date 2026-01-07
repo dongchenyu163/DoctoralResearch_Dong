@@ -217,6 +217,7 @@ ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
     const Eigen::Vector3d& knife_n,
     double table_z) const {
   if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
+    last_geo_order_.resize(0);
     return CandidateMatrix(0, candidate_indices.cols());
   }
 
@@ -261,6 +262,7 @@ ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
   }
 
   if (row_scores.empty()) {
+    last_geo_order_.resize(0);
     return CandidateMatrix(0, candidate_indices.cols());
   }
 
@@ -301,6 +303,11 @@ ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
     return lhs.first > rhs.first;
   });
 
+  last_geo_order_.resize(static_cast<Eigen::Index>(order.size()));
+  for (Eigen::Index i = 0; i < static_cast<Eigen::Index>(order.size()); ++i) {
+    last_geo_order_(i) = order[static_cast<std::size_t>(i)].second;
+  }
+
   Eigen::Index keep = static_cast<Eigen::Index>(order.size());
   if (geo_ratio_ > 0.0 && geo_ratio_ < 1.0) {
     keep = std::max<Eigen::Index>(1, static_cast<Eigen::Index>(std::round(geo_ratio_ * keep)));
@@ -317,6 +324,10 @@ ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
     SPDLOG_LOGGER_INFO(geo_logger_, "GeoFilter kept {} rows out of {}", keep, row_scores.size());
   }
   return output;
+}
+
+Eigen::VectorXi ScoreCalculator::lastGeoOrder() const {
+  return last_geo_order_;
 }
 
 // Algorithm 3: PCA-based directional alignment.

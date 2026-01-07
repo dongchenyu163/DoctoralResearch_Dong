@@ -58,6 +58,8 @@ class ScoreCalculator {
                                    const Eigen::Vector3d& knife_p,
                                    const Eigen::Vector3d& knife_n,
                                    double table_z) const;
+  // Sorted row indices from the most recent GeoFilter call (descending score).
+  Eigen::VectorXi lastGeoOrder() const;
 
   // Algorithm 3: E_pdir (smaller angle between PCA axis and knife normal is better).
   Eigen::VectorXd calcPositionalScores(const Eigen::Ref<const CandidateMatrix>& candidate_indices,
@@ -103,4 +105,5 @@ class ScoreCalculator {
   std::shared_ptr<spdlog::logger> geo_logger_;
   std::shared_ptr<spdlog::logger> pos_logger_;
   std::shared_ptr<spdlog::logger> dyn_logger_;
+  mutable Eigen::VectorXi last_geo_order_;
 };

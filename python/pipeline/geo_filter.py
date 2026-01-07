@@ -74,6 +74,13 @@ class GeoFilterRunner:
             result = self._calculator.filter_by_geo_score(filtered_candidates, knife_position, knife_normal, table_z)
         return np.asarray(result, dtype=np.int32)
 
+    def mask_candidates(self, candidate_matrix: np.ndarray, valid_indices: np.ndarray) -> np.ndarray:
+        return _mask_candidates(candidate_matrix, valid_indices)
+
+    def last_geo_order(self) -> np.ndarray:
+        order = self._calculator.last_geo_order()
+        return np.asarray(order, dtype=np.int32)
+
     def calc_positional_scores(
         self,
         candidate_matrix: np.ndarray,
