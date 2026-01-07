@@ -8,6 +8,14 @@ import logging
 import sys
 from pathlib import Path
 
+import importlib, os
+os.environ["PATH"] += os.pathsep + "/home/cookteam/Documents/blender-4.5.3-linux-x64"
+
+
+import trimesh
+import trimesh.interfaces.blender as blend
+importlib.reload(blend)
+
 sys.path.append("/home/cookteam/Workspace/CPP_Program/python_force_calc_2026")
 
 from python.instrumentation.timing import TimingRecorder
