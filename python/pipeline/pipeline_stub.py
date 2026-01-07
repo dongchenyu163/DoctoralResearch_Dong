@@ -212,7 +212,14 @@ def run_pipeline(
                         if mesh is not None:
                             pc_logger.save_mesh(stage_name, step_idx, mesh)
             with recorder.section("python/wrench_compute"):
-                wrench = compute_wrench(contact_surface, config, step_idx=step_idx)
+                food_center = _food_center(preprocess_result)
+                wrench = compute_wrench(
+                    contact_surface,
+                    config,
+                    step_idx=step_idx,
+                    velocity=node.velocity,
+                    food_center=food_center,
+                )
             last_contact_metadata = dict(contact_surface.metadata)
             last_wrench = wrench
             CONTACT_LOGGER.info(
@@ -425,6 +432,19 @@ def _flatten_contact_faces(faces: List[np.ndarray]) -> np.ndarray:
     if not flattened:
         return np.empty((0, 3), dtype=np.float64)
     return np.vstack(flattened)
+
+
+def _food_center(preprocess: PreprocessResult) -> np.ndarray:
+    mesh = preprocess.food_mesh
+    if mesh is not None and not mesh.is_empty:
+        if mesh.is_volume:
+            return np.asarray(mesh.center_mass, dtype=np.float64)
+        return np.asarray(mesh.centroid, dtype=np.float64)
+    if preprocess.points_high.size:
+        return preprocess.points_high.mean(axis=0)
+    if preprocess.points_low.size:
+        return preprocess.points_low.mean(axis=0)
+    return np.zeros(3, dtype=np.float64)
 
 
 def _combine_points_for_debug(omega_points: np.ndarray, contact_points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

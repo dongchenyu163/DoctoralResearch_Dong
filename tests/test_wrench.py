@@ -23,7 +23,7 @@ class WrenchTests(unittest.TestCase):
             )
         ]
         surface = ContactSurfaceResult(faces=faces, metadata={"total_faces": 2}, mesh=None)
-        wrench = compute_wrench(surface, config)
+        wrench = compute_wrench(surface, config, velocity=np.array([0.0, 0.0, 1.0]))
         self.assertEqual(wrench.shape, (6,))
         self.assertAlmostEqual(wrench[2], 0.0)
         self.assertAlmostEqual(wrench[3], 0.0)
@@ -41,8 +41,9 @@ class WrenchTests(unittest.TestCase):
         surface = ContactSurfaceResult(faces=faces, metadata={}, mesh=None)
         config_zero = make_config({"physics": {"friction_coef": 0.0, "planar_constraint": False}})
         config_high = make_config({"physics": {"friction_coef": 1.0, "planar_constraint": False}})
-        wrench_zero = compute_wrench(surface, config_zero)
-        wrench_high = compute_wrench(surface, config_high)
+        velocity = np.array([1.0, 0.0, 0.0])
+        wrench_zero = compute_wrench(surface, config_zero, velocity=velocity)
+        wrench_high = compute_wrench(surface, config_high, velocity=velocity)
         self.assertTrue(np.linalg.norm(wrench_high[:3]) > np.linalg.norm(wrench_zero[:3]))
 
 

@@ -29,7 +29,13 @@ from python.utils.logging_sections import log_boxed_heading
 LOGGER = logging.getLogger("pipeline.wrench")
 
 
-def compute_wrench(surface: ContactSurfaceResult, config: Config, step_idx: int | None = None) -> np.ndarray:
+def compute_wrench(
+    surface: ContactSurfaceResult,
+    config: Config,
+    step_idx: int | None = None,
+    velocity: np.ndarray | None = None,
+    food_center: np.ndarray | None = None,
+) -> np.ndarray:
     """Compute simplified fracture + friction wrench (Algorithm 4 input).
 
     Args:
@@ -40,6 +46,8 @@ def compute_wrench(surface: ContactSurfaceResult, config: Config, step_idx: int 
             - `friction_coef` μ. Controls tangential friction force magnitude.
             - `planar_constraint` bool. When True, zeroes out non-planar wrench components (z force
               + roll/pitch moments) per spec §3.4.
+        velocity: Knife velocity vector; used for fracture/friction directions.
+        food_center: Food center of mass g; used for torque arms.
     Returns:
         6-vector `[Fx, Fy, Fz, Tx, Ty, Tz]`.
     """
@@ -68,6 +76,14 @@ def compute_wrench(surface: ContactSurfaceResult, config: Config, step_idx: int 
     friction_voxel = float(friction_cfg.get("voxel_size", 0.002))  # 体素下采样尺寸 (m)
     friction_edge = float(friction_cfg.get("edge_delta", 0.002))  # 边缘加密步长 (m)
 
+    # 规范化速度向量，作为断裂/摩擦方向
+    v_hat, v_norm = _safe_unit(velocity)
+    if v_norm < 1e-12:
+        LOGGER.warning("Knife velocity missing/zero; wrench forces default to zero")
+
+    # 确定重心 g（用于扭矩臂）
+    center = _resolve_food_center(surface, food_center)
+
     # 初始化累积变量：总力、总扭矩和各面详细信息
     total_force = np.zeros(3, dtype=np.float64)
     total_torque = np.zeros(3, dtype=np.float64)
@@ -79,13 +95,18 @@ def compute_wrench(surface: ContactSurfaceResult, config: Config, step_idx: int 
     fracture_sum = np.zeros(3, dtype=np.float64)
     fracture_torque = np.zeros(3, dtype=np.float64)
     
-    if edge_line is not None:
-        direction = np.array([0.0, 0.0, 1.0], dtype=np.float64)  # 断裂力方向（+Z）
-        for point in edge_line:
-            # 每个采样点施加 fracture_toughness * step 的力
-            force = fracture_toughness * fracture_step * direction
-            fracture_sum += force
-            fracture_torque += np.cross(point, force)  # 累积扭矩 τ = r × F
+    if edge_line is not None and v_norm >= 1e-12:
+        # blade_normal = _estimate_blade_normal(surface.faces)
+        blade_normal = np.array([0, 0, 1])
+        if blade_normal is None:
+            LOGGER.warning("Knife blade normal unavailable; fracture force defaults to zero")
+        else:
+            for point in edge_line:
+                # f_c(u) = -kappa * (v_hat · n_s) * v_hat, integrate with du
+                scale = -fracture_toughness * float(np.dot(v_hat, blade_normal))
+                force = scale * v_hat * fracture_step
+                fracture_sum += force
+                fracture_torque += np.cross(point - center, force)  # τ = (r - g) × F
     else:
         LOGGER.error("Knife edge line unavailable; fracture force defaults to zero")
 
@@ -113,20 +134,21 @@ def compute_wrench(surface: ContactSurfaceResult, config: Config, step_idx: int 
             normal = normal_vec / (np.linalg.norm(normal_vec) + 1e-12)
             centroid = (a + b + c) / 3.0  # 三角形质心
             
-            # 计算法向压力：F_n = pressure × area × normal
-            normal_force = pressure * area * normal
-            
-            # 计算切向摩擦力方向（与法向垂直）
-            tangent = np.cross(normal, np.array([0.0, 0.0, 1.0]))
-            if np.linalg.norm(tangent) < 1e-9:  # 如果法向接近Z轴，换用Y轴
-                tangent = np.cross(normal, np.array([0.0, 1.0, 0.0]))
-            tangent = tangent / (np.linalg.norm(tangent) + 1e-12)
-            
-            # 计算摩擦力：F_f = μ × |F_n| × tangent
-            friction_force = friction_coef * np.linalg.norm(normal_force) * tangent
+            if v_norm < 1e-12:
+                continue
+
+            # 速度方向投影到接触面：v_cj = v_hat - (v_hat·n) n
+            v_proj = v_hat - float(np.dot(v_hat, normal)) * normal
+            v_proj_norm = np.linalg.norm(v_proj)
+            if v_proj_norm < 1e-12:
+                continue
+            v_hat_cj = v_proj / v_proj_norm
+
+            # 计算摩擦力：F_f = μ × P × area × v_hat_cj
+            friction_force = friction_coef * pressure * area * v_hat_cj
             friction_sum += friction_force
-            torque_sum += np.cross(centroid, friction_force)  # 累积扭矩
-        
+            torque_sum += np.cross(centroid - center, friction_force)  # 累积扭矩
+
         # 记录该面簇的详细信息（断裂力、摩擦力、总扭矩、总面积）
         face_details.append((fracture_sum.copy(), friction_sum.copy(), fracture_torque.copy() + torque_sum.copy(), total_area))
         
@@ -169,6 +191,53 @@ def compute_wrench(surface: ContactSurfaceResult, config: Config, step_idx: int 
 
 def _format_vec(vec: np.ndarray) -> str:
     return np.array2string(np.asarray(vec, dtype=np.float64), precision=4, separator=",")
+
+
+def _safe_unit(vec: np.ndarray | None) -> Tuple[np.ndarray, float]:
+    if vec is None:
+        return np.zeros(3, dtype=np.float64), 0.0
+    arr = np.asarray(vec, dtype=np.float64).reshape(3)
+    norm = float(np.linalg.norm(arr))
+    if norm < 1e-12:
+        return np.zeros(3, dtype=np.float64), norm
+    return arr / norm, norm
+
+
+def _resolve_food_center(surface: ContactSurfaceResult, food_center: np.ndarray | None) -> np.ndarray:
+    if food_center is not None:
+        return np.asarray(food_center, dtype=np.float64).reshape(3)
+    if surface.mesh is not None and not surface.mesh.is_empty:
+        if surface.mesh.is_volume:
+            return np.asarray(surface.mesh.center_mass, dtype=np.float64)
+        return np.asarray(surface.mesh.centroid, dtype=np.float64)
+    face_points = _flatten_faces(surface.faces)
+    if face_points.size:
+        return face_points.mean(axis=0)
+    return np.zeros(3, dtype=np.float64)
+
+
+def _estimate_blade_normal(face_groups: List[np.ndarray]) -> Optional[np.ndarray]:
+    normals = []
+    for group in face_groups:
+        pts = np.asarray(group, dtype=np.float64).reshape(-1, 3)
+        if pts.size:
+            normals.append(_fit_plane_normal(pts))
+    if not normals:
+        return None
+    summed = np.sum(normals, axis=0)
+    norm = np.linalg.norm(summed)
+    if norm < 1e-9:
+        return normals[0]
+    return summed / norm
+
+
+def _flatten_faces(face_groups: List[np.ndarray]) -> np.ndarray:
+    if not face_groups:
+        return np.empty((0, 3), dtype=np.float64)
+    points = [np.asarray(group, dtype=np.float64).reshape(-1, 3) for group in face_groups if group.size]
+    if not points:
+        return np.empty((0, 3), dtype=np.float64)
+    return np.vstack(points)
 
 
 def _build_edge_line(face_groups: List[np.ndarray], step: float) -> Optional[np.ndarray]:
