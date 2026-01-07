@@ -27,3 +27,12 @@ No Git history exists yet, so adopt the Issue naming guidance in `implementation
 
 ## Security & Configuration Tips
 Pin local toolchains to the versions declared in `reference_CMakeLists.txt` (VTK 9.2, Eigen 3.3, Pybind11; CUDA linkage remains off until further notice). Never run Python entry points without `pyenv activate new_env_testing`; doing so can mis-link OpenMP and invalidate logged metrics. Store sensitive calibration data outside the repo and reference it via environment variables in configs.
+
+### Handling Local Modifications
+Before running commands that may overwrite files (e.g., regenerating bindings, re-running pipelines that write to configs or outputs), the developer or automation agent should:
+- Use Git to check for local changes to tracked files, for example:
+  - `git status` to see which files are modified.
+  - `git diff` to inspect what changed.
+- Present a summary of the changes to the user and explicitly ask whether to keep the modifications or discard them.
+  - If the user wants to keep the changes, ensure they are committed (or stashed) before proceeding.
+  - If the user wants to discard the changes, commit them and add a tag, then revert them with Git (for example, `git restore <file>` or `git reset --hard` as appropriate) before continuing.
