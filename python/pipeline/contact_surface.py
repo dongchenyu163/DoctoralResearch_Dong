@@ -46,6 +46,7 @@ def extract_contact_surface(
                     intersection = trimesh.util.concatenate(intersection)
             except Exception as exc:  # pragma: no cover - backend specific
                 LOGGER.error("Mesh boolean failed (%s); returning empty contact surface", exc)
+                LOGGER.error("Mesh boolean failed (%s); export PATH=${PATH}:/home/cookteam/Documents/blender-4.5.3-linux-x64", exc)
                 intersection = None
         faces = _filter_faces_with_planes(
             intersection,
