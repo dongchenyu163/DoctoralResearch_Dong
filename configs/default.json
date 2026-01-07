@@ -52,9 +52,9 @@
     "length_margin": 0.05
   },
   "physics": {
-    "friction_coef": 0.6,
-    "fracture_toughness": 400.0,
-    "pressure_distribution": 3000.0,
+    "friction_coef": 0.4331,
+    "fracture_toughness": 409.66,
+    "pressure_distribution": 3352.07,
     "planar_constraint": true,
     "fracture_step": 0.001,
     "debug_friction_contact_viz": true,
