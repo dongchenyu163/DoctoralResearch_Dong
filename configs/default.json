@@ -51,10 +51,16 @@
     "length_margin": 0.05
   },
   "physics": {
-    "friction_coef": 0.5,
+    "friction_coef": 0.6,
     "fracture_toughness": 400.0,
     "pressure_distribution": 3000.0,
     "planar_constraint": true,
+    "fracture_step": 0.001,
+    "friction_mesh": {
+      "sample_count": 5000,
+      "voxel_size": 0.002,
+      "edge_delta": 0.002
+    },
     "friction_cone": {
       "angle_deg": 40.0,
       "num_sides": 8
