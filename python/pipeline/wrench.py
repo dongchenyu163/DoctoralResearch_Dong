@@ -128,7 +128,7 @@ def compute_wrench(
             # 计算法向量和面积
             normal_vec = np.cross(b - a, c - a)
             area = 0.5 * np.linalg.norm(normal_vec)
-            if not np.isfinite(area) or area < 1e-9:
+            if not np.isfinite(area) or area < 1e-14:
                 continue  # 跳过退化三角形
             total_area += area
             
