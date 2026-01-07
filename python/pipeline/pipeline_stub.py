@@ -28,7 +28,6 @@ from python.utils.config_loader import Config
 from python.utils.logging_sections import log_boxed_heading
 from python.utils.logging_setup import CppLoggingSettings
 from python.utils.pointcloud_logging import PointCloudDebugSaver
-import numpy as np
 
 try:
     import trimesh
