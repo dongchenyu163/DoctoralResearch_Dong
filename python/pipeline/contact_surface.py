@@ -41,7 +41,7 @@ def extract_contact_surface(
     with recorder.section("python/contact_surface_total"):
         with recorder.section("python/mesh_boolean"):
             try:
-                intersection = trimesh.boolean.intersection([base_mesh, knife_instance.mesh], check_volume=False, use_exact=True)
+                intersection = base_mesh.intersection(knife_instance.mesh, engine='blender', check_volume=False, use_exact=True)
                 if isinstance(intersection, (list, tuple)):
                     intersection = trimesh.util.concatenate(intersection)
             except Exception as exc:  # pragma: no cover - backend specific
