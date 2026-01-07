@@ -47,6 +47,9 @@ def compute_valid_indices(
     knife_threshold = knife_height - knife_clearance
     center_plane = _normalize_plane(knife.center_plane)
     penetration_plane = _normalize_plane(knife.penetration_plane)
+    # Fix penetration_plane normal to point +Y direction
+    if penetration_plane.normal[1] < 0:
+        penetration_plane = PlaneInstance(point=penetration_plane.point, normal=-penetration_plane.normal)
 
     with recorder.section("python/compute_valid_indices_total"):
         with recorder.section("python/valid_filter_table"):
