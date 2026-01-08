@@ -117,7 +117,12 @@ def preprocess_point_cloud(
         with recorder.section("python/downsample"):
             downsampled = _downsample_points(high_res, downsample_target)
         with recorder.section("python/estimate_normals"):
-            normals = _estimate_normals(downsampled, search_radius=normal_radius)
+            normals = _estimate_normals(
+                downsampled,
+                search_radius=normal_radius,
+                align_to_center=bool(preprocess_cfg.get("align_normals_to_center", False)),
+                center_direction=str(preprocess_cfg.get("normal_center_direction", "inward")),
+            )
         food_mesh = _build_food_mesh(high_res, config)
 
     return PreprocessResult(
@@ -246,7 +251,13 @@ def _voxel_downsample(points: np.ndarray, voxel_size: float) -> np.ndarray:
     return np.asarray(sampled.points, dtype=np.float64)
 
 
-def _estimate_normals(points: np.ndarray, search_radius: float, max_nn: int = 30) -> np.ndarray:
+def _estimate_normals(
+    points: np.ndarray,
+    search_radius: float,
+    max_nn: int = 30,
+    align_to_center: bool = False,
+    center_direction: str = "inward",
+) -> np.ndarray:
     """Estimate normals via Open3D ball neighborhoods."""
     if points.size == 0:
         return np.zeros_like(points)
@@ -256,6 +267,16 @@ def _estimate_normals(points: np.ndarray, search_radius: float, max_nn: int = 30
     normals = np.asarray(cloud.normals, dtype=np.float64)
     if normals.shape[0] != points.shape[0]:
         raise RuntimeError("open3d failed to estimate normals")
+    if align_to_center:
+        center = points.mean(axis=0)
+        to_center = center - points
+        inward = center_direction.lower() != "outward"
+        if inward:
+            flip_mask = np.einsum("ij,ij->i", normals, to_center) < 0.0
+        else:
+            flip_mask = np.einsum("ij,ij->i", normals, to_center) > 0.0
+        if np.any(flip_mask):
+            normals[flip_mask] *= -1.0
     return normals
 
 

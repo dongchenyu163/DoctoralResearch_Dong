@@ -5,6 +5,8 @@
     "synthetic_point_count": 512,
     "downsample_num": 600,
     "normal_estimation_radius": 0.01,
+    "align_normals_to_center": true,
+    "normal_center_direction": "inward",
     "high_res_voxel": 0.002,
     "mesh": {
       "enabled": true,
