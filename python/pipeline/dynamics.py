@@ -116,8 +116,8 @@ def debug_visualize_dynamics_forces(
         if length < 1e-9:
             return None
         arrow = o3d.geometry.TriangleMesh.create_arrow(
-            cylinder_radius=0.002,
-            cone_radius=0.005,
+            cylinder_radius=0.0005,
+            cone_radius=0.0015,
             cylinder_height=length * 0.8,
             cone_height=length * 0.2,
         )
@@ -201,7 +201,7 @@ def debug_visualize_dynamics_forces(
             residual,
             np.array2string(f_vec, precision=4, separator=","),
         )
-        vis.reset_view_point(True)
+        # vis.reset_view_point(True)
 
     def on_page_up(vis_obj):
         state["p_idx"] = (state["p_idx"] + 1) % len(attempts)
