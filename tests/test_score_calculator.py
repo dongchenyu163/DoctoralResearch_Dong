@@ -90,6 +90,7 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
             candidates,
             wrench,
             np.zeros(3, dtype=np.float64),
+            False,
             0.5,
             40.0,
             10,

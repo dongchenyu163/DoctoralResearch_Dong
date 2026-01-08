@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <numeric>
 #include <random>
+// #include <spdlog/spdlog.h>
 #include <stdexcept>
 
 #include <pcl/visualization/pcl_visualizer.h>
@@ -296,6 +297,7 @@ Eigen::MatrixXd ScoreCalculator::buildGraspMatrix(const Eigen::VectorXi& indices
 double ScoreCalculator::calcForceResidual(const Eigen::VectorXi& indices,
                                           const Eigen::VectorXd& wrench,
                                           const Eigen::Vector3d& center,
+                                          bool planar_constraint,
                                           const Eigen::VectorXd& f) const {
   if (indices.size() == 0) {
     return std::numeric_limits<double>::infinity();
@@ -305,6 +307,11 @@ double ScoreCalculator::calcForceResidual(const Eigen::VectorXi& indices,
   }
   Eigen::MatrixXd G = buildGraspMatrix(indices, center);
   Eigen::VectorXd residual_vec = G * f + wrench;
+  if (planar_constraint && residual_vec.size() >= 5) {
+    residual_vec(2) = 0.0;
+    residual_vec(3) = 0.0;
+    residual_vec(4) = 0.0;
+  }
   if (dyn_logger_) {
     SPDLOG_LOGGER_INFO(dyn_logger_, "Force residual vec=[{:+03.4f}, {:+03.4f}, {:+03.4f}, {:+03.4f}, {:+03.4f}, {:+03.4f}]", residual_vec(0), residual_vec(1), residual_vec(2), residual_vec(3), residual_vec(4), residual_vec(5));
   }
@@ -548,6 +555,7 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     const Eigen::Ref<const CandidateMatrix>& candidate_indices,
     const Eigen::VectorXd& wrench,
     const Eigen::Vector3d& center,
+    bool planar_constraint,
     double friction_coef,
     double friction_angle_deg,
     int max_attempts,
@@ -562,11 +570,12 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
   if (dyn_logger_) {
     SPDLOG_LOGGER_INFO(
         dyn_logger_,
-        "Dynamics scoring rows={} wrench_norm={:.4f} attempts={} balance={:.6f} force=[{:.3f},{:.3f}] cone_max={:.2f}deg",
+        "Dynamics scoring rows={} wrench_norm={:.4f} attempts={} balance={:.6f} planar={} force=[{:.3f},{:.3f}] cone_max={:.2f}deg",
         candidate_indices.rows(),
         wrench.norm(),
         max_attempts,
         balance_threshold,
+        planar_constraint,
         force_min,
         force_max,
         cone_angle_max_deg);
@@ -598,6 +607,7 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     cone_angle_max_deg = 0.0;
   }
   double cone_angle_max_rad = std::clamp(cone_angle_max_deg, 0.0, 89.0) * M_PI / 180.0;
+  SPDLOG_LOGGER_INFO(dyn_logger_, "Friction angle: {:.4f} deg, {:.4f} rad", cone_angle_max_deg, cone_angle_max_rad);
 
   std::mt19937 rng(dyn_seed_);
   std::uniform_real_distribution<double> angle_dist(0.0, cone_angle_max_rad);
@@ -676,6 +686,11 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
       Eigen::VectorXd f = f_init - G_pinv * t;
 
       Eigen::VectorXd residual_vec = G * f + wrench;
+      if (planar_constraint && residual_vec.size() >= 5) {
+        residual_vec(2) = 0.0;
+        residual_vec(3) = 0.0;
+        residual_vec(4) = 0.0;
+      }
       double residual = residual_vec.norm();
       bool balance_ok = residual <= balance_threshold;
 

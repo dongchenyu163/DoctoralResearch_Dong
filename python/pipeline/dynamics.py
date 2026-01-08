@@ -45,6 +45,7 @@ def compute_dynamics_scores(
     force_min = float(sample_cfg.get("force_min", 0.1))
     force_max = float(sample_cfg.get("force_max", 1.0))
     cone_angle_max = float(sample_cfg.get("cone_angle_max_deg", friction_angle))
+    planar_constraint = bool(config.physics.get("planar_constraint", False))
     LOGGER.debug(
         "Dynamics scoring rows=%d μ=%.3f cone=%.3f attempts=%d balance=%.6f force=[%.3f,%.3f] cone_max=%.3f wrench=%s",
         candidate_matrix.shape[0],
@@ -61,6 +62,7 @@ def compute_dynamics_scores(
         candidate_matrix,
         wrench,
         center,
+        planar_constraint,
         friction_coef,
         friction_angle,
         max_attempts,
@@ -194,15 +196,17 @@ def debug_visualize_dynamics_forces(
 
         add_geometry(make_arrow(center, wrench_force * scale, [0.9, 0.7, 0.2]))
 
-        residual = runner.calculator.calc_force_residual(candidate, wrench, center, f_vec)
+        planar_constraint = bool(config.physics.get("planar_constraint", False))
+        residual = runner.calculator.calc_force_residual(candidate, wrench, center, planar_constraint, f_vec)
         LOGGER.info(
-            "Dynamics viz P=%d/%d f=%d/%d residual=%.2f f=%s angles=%s",
+            "Dynamics viz P=%d/%d f=%d/%d residual=%.2f f=%s normal=%s angles=%s",
             p_idx + 1,
             len(attempts),
             f_idx + 1,
             len(f_list),
             residual,
             np.array2string(f_vec, precision=4, separator=","),
+            np.array2string(normals_local, precision=2, separator=","),
             np.array2string(np.asarray(angle_list, dtype=np.float64), precision=2, separator=","),
         )
         # vis.reset_view_point(True)

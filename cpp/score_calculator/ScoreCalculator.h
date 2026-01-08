@@ -86,6 +86,7 @@ class ScoreCalculator {
   Eigen::VectorXd calcDynamicsScores(const Eigen::Ref<const CandidateMatrix>& candidate_indices,
                                      const Eigen::VectorXd& wrench,
                                      const Eigen::Vector3d& center,
+                                     bool planar_constraint,
                                      double friction_coef,
                                      double friction_angle_deg,
                                      int max_attempts,
@@ -96,6 +97,7 @@ class ScoreCalculator {
   double calcForceResidual(const Eigen::VectorXi& indices,
                            const Eigen::VectorXd& wrench,
                            const Eigen::Vector3d& center,
+                           bool planar_constraint,
                            const Eigen::VectorXd& f) const;
 
   using ForceAttempt = std::tuple<Eigen::VectorXd, double, double, double>;
