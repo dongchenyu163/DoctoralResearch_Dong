@@ -63,7 +63,7 @@
     "planar_constraint": true,
     "fracture_step": 0.001,
     "debug_friction_contact_viz": false,
-    "force_generation_attempts": 5,
+    "force_generation_attempts": 150,
     "force_generation_seed": 43,
     "force_sample_range": {
       "force_min": 10,
@@ -91,7 +91,7 @@
     "finger_count": 2,
     "table_clearance": 0.002,
     "knife_clearance": 0.002,
-    "max_geo_candidates": 2,
+    "max_geo_candidates": 150,
     "debug_valid_indices_viz": false,
     "debug_geo_filter_viz": false,
     "debug_geo_filter_k": 24,
