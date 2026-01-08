@@ -724,6 +724,8 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     // viewer->spin();
     // viewer->close();
 
+  std::cout << "Center: [" << center.transpose() << "]" << std::endl;
+
   // 遍历每个候选抓取配置（每行代表一组接触点）
   for (Eigen::Index i = 0; i < rows; ++i) {
     if (dyn_logger_ && (i % 50 == 0 || i + 1 == rows)) {
