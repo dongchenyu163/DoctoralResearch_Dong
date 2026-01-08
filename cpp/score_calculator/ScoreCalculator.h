@@ -107,7 +107,7 @@ class ScoreCalculator {
                                const Eigen::VectorXd& f_init =
                                    Eigen::VectorXd::Constant(1, std::numeric_limits<double>::quiet_NaN())) const;
 
-  using ForceAttempt = std::tuple<Eigen::VectorXd, double, double, double>;
+  using ForceAttempt = std::tuple<Eigen::VectorXd, Eigen::VectorXd, double, double, double>;
   const std::vector<std::vector<ForceAttempt>>& lastDynamicsAttempts() const { return last_dyn_attempts_; }
 
   std::int64_t pointCount() const noexcept {

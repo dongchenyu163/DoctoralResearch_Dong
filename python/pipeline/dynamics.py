@@ -166,11 +166,15 @@ def debug_visualize_dynamics_forces(
         candidate = candidate_matrix[p_idx]
         points = points_low[candidate]
         normals_local = normals[candidate]
-        f_vec = np.asarray(f_list[f_idx][0], dtype=np.float64).reshape(-1)
+        attempt = f_list[f_idx]
+        f_vec = np.asarray(attempt[0], dtype=np.float64).reshape(-1)
+        f_init_vec = np.asarray(attempt[1], dtype=np.float64).reshape(-1)
         max_force = 0.0
         for idx in range(points.shape[0]):
             force = f_vec[3 * idx : 3 * idx + 3]
             max_force = max(max_force, float(np.linalg.norm(force)))
+            force_init = f_init_vec[3 * idx : 3 * idx + 3]
+            max_force = max(max_force, float(np.linalg.norm(force_init)))
         wrench_force = np.asarray(wrench[:3], dtype=np.float64)
         max_force = max(max_force, float(np.linalg.norm(wrench_force)))
         scale = aabb_size / max_force if max_force > 1e-9 else 1.0
@@ -192,6 +196,9 @@ def debug_visualize_dynamics_forces(
             angle = float(np.arccos(np.clip(np.dot(force, normals_local[idx]) / (np.linalg.norm(force) * np.linalg.norm(normals_local[idx]) + 1e-9), -1.0, 1.0)))
             angle_list.append(np.rad2deg(angle))
             arrow = make_arrow(points[idx], force * scale, [0.9, 0.2, 0.2])
+            add_geometry(arrow)
+            init_force = f_init_vec[3 * idx : 3 * idx + 3]
+            arrow = make_arrow(points[idx], init_force * scale, [0.6, 0.6, 0.6])
             add_geometry(arrow)
 
         add_geometry(make_arrow(center, wrench_force * scale, [0.9, 0.7, 0.2]))

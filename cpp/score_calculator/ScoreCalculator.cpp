@@ -884,7 +884,7 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
       }
 
       double total = e_mag + e_dir + e_var;
-      attempts.emplace_back(f, e_mag, e_dir, e_var);
+      attempts.emplace_back(f, f_init, e_mag, e_dir, e_var);
 
       if (balance_ok && cone_ok) {
         has_valid = true;
@@ -908,8 +908,8 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     }
 
     std::sort(attempts.begin(), attempts.end(), [](const ForceAttempt& a, const ForceAttempt& b) {
-      double total_a = std::get<1>(a) + std::get<2>(a) + std::get<3>(a);
-      double total_b = std::get<1>(b) + std::get<2>(b) + std::get<3>(b);
+      double total_a = std::get<2>(a) + std::get<3>(a) + std::get<4>(a);
+      double total_b = std::get<2>(b) + std::get<3>(b) + std::get<4>(b);
       return total_a > total_b;
     });
 
