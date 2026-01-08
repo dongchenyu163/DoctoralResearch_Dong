@@ -338,17 +338,23 @@ bool ScoreCalculator::checkRandomForceBalance(const Eigen::VectorXi& indices,
   Eigen::MatrixXd G = buildGraspMatrix(indices, center);
   Eigen::VectorXd f_init(3 * indices.size());
   f_init.setRandom();
+  std::cout << " Random force: " << f_init.transpose() << std::endl;
 
   Eigen::MatrixXd G_pinv = PseudoInverse(G, 1e-9);
   Eigen::VectorXd t = (-wrench) - G * f_init;
   Eigen::VectorXd f = f_init + G_pinv * t;
 
   Eigen::VectorXd residual_vec = G * f + wrench;
+  residual_vec(2) = 0.0; // 忽略 Fz (由桌面支撑)
+  residual_vec(3) = 0.0; // 忽略 Mx (由桌面支撑)
+  residual_vec(4) = 0.0; // 忽略 My (由桌面支撑)
   double residual = residual_vec.norm();
   if (dyn_logger_) {
     SPDLOG_LOGGER_INFO(dyn_logger_, "Random force balance residual={:.6f}", residual);
   }
+  std::cout << std::endl;
   std::cout << "residual_vec: " << residual_vec.transpose() << std::endl;
+  std::cout << "force: " << f.transpose() << std::endl;
   return residual <= balance_threshold;
 }
 
@@ -699,14 +705,20 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
 
     for (int attempt = 0; attempt < max_attempts; ++attempt) {
       Eigen::VectorXd f_init(3 * contact_count);
-      for (Eigen::Index j = 0; j < contact_count; ++j) {
-        const auto& p = cloud_->points[static_cast<std::size_t>(indices(j))];
-        Eigen::Vector3d normal = SafeNormal(p);
-        Eigen::Vector3d sample = SampleForceInCone(normal, rng, angle_dist, normal_dist);
-        f_init.segment(3 * j, 3) = sample;
 
-        double force_angle = std::acos(normal.dot(sample) / (normal.norm() * sample.norm())) * 180.0 / M_PI;
-        // SPDLOG_LOGGER_INFO(dyn_logger_, "Sampled force at contact {}: [{:+03.4f}, {:+03.4f}, {:+03.4f}]  normal [{:+03.4f}, {:+03.4f}, {:+03.4f}], angle {:.4f} deg", j, sample(0), sample(1), sample(2), normal(0), normal(1), normal(2), force_angle);
+      int retry_count = 3;
+      bool valid_sample = false;
+      Eigen::VectorXd f;
+      do {
+        
+        for (Eigen::Index j = 0; j < contact_count; ++j) {
+          const auto& p = cloud_->points[static_cast<std::size_t>(indices(j))];
+          Eigen::Vector3d normal = SafeNormal(p);
+          Eigen::Vector3d sample = SampleForceInCone(normal, rng, angle_dist, normal_dist);
+          f_init.segment(3 * j, 3) = sample;
+          
+          double force_angle = std::acos(normal.dot(sample) / (normal.norm() * sample.norm())) * 180.0 / M_PI;
+          // SPDLOG_LOGGER_INFO(dyn_logger_, "Sampled force at contact {}: [{:+03.4f}, {:+03.4f}, {:+03.4f}]  normal [{:+03.4f}, {:+03.4f}, {:+03.4f}], angle {:.4f} deg", j, sample(0), sample(1), sample(2), normal(0), normal(1), normal(2), force_angle);
         assert(force_angle <= cone_angle_max_deg + 1e-2);
       }
 
@@ -717,8 +729,23 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
 
       // t = (-wrench) - G * f_init
       Eigen::VectorXd t = (-wrench) - G * f_init;
-      Eigen::VectorXd f = f_init - G_pinv * t;
+      // Eigen::VectorXd f = f_init - G_pinv * t;
+      f = f_init - G_pinv * t;
 
+      
+      for (Eigen::Index j = 0; j < contact_count; ++j) {
+        const auto& p = cloud_->points[static_cast<std::size_t>(indices(j))];
+        Eigen::Vector3d normal = SafeNormal(p);
+        Eigen::Vector3d sample = f.segment(3 * j, 3);
+        double force_angle = std::acos(normal.dot(sample) / (normal.norm() * sample.norm())) * 180.0 / M_PI;
+        if (!(force_angle <= cone_angle_max_deg + 1e-2))      
+        {
+          valid_sample = false;
+          break;
+        }
+      }
+      }while (!valid_sample && --retry_count > 0);
+      
       Eigen::VectorXd residual_vec = G * f + wrench;
       if (planar_constraint && residual_vec.size() >= 5) {
         residual_vec(2) = 0.0;
@@ -773,6 +800,11 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
         if (total > best_score) {
           best_score = total;
         }
+      }
+      else {
+        // if (dyn_logger_) {
+        //   SPDLOG_LOGGER_INFO(dyn_logger_, "Attempt [{},{}] failed: balance_ok={} cone_ok={} residual={:.6f}", i, attempt + 1, balance_ok, cone_ok, residual);
+        // }
       }
     }
 
