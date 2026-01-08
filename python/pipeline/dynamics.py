@@ -106,17 +106,18 @@ def debug_visualize_dynamics_forces(
     omega_points = points_low[omega_indices] if omega_indices.size else points_low
     normals = normals_low
     bbox = omega_points if omega_points.size else points_low
-    scale = float(np.linalg.norm(bbox.max(axis=0) - bbox.min(axis=0))) if bbox.size else 0.1
-    sphere_radius = max(scale * 0.01, 1e-4)
-    arrow_scale = max(scale * 0.1, 1e-3)
+    extent = bbox.max(axis=0) - bbox.min(axis=0) if bbox.size else np.array([0.1, 0.1, 0.1])
+    aabb_size = float(np.linalg.norm(extent))
+    sphere_radius = 0.002
+    normal_length = 0.02
 
     def make_arrow(origin: np.ndarray, direction: np.ndarray, color: Iterable[float]) -> "o3d.geometry.TriangleMesh | None":
         length = float(np.linalg.norm(direction))
         if length < 1e-9:
             return None
         arrow = o3d.geometry.TriangleMesh.create_arrow(
-            cylinder_radius=arrow_scale * 0.05,
-            cone_radius=arrow_scale * 0.08,
+            cylinder_radius=max(length * 0.05, 1e-4),
+            cone_radius=max(length * 0.08, 1e-4),
             cylinder_height=length * 0.8,
             cone_height=length * 0.2,
         )
@@ -163,6 +164,13 @@ def debug_visualize_dynamics_forces(
         points = points_low[candidate]
         normals_local = normals[candidate]
         f_vec = np.asarray(f_list[f_idx][0], dtype=np.float64).reshape(-1)
+        max_force = 0.0
+        for idx in range(points.shape[0]):
+            force = f_vec[3 * idx : 3 * idx + 3]
+            max_force = max(max_force, float(np.linalg.norm(force)))
+        wrench_force = np.asarray(wrench[:3], dtype=np.float64)
+        max_force = max(max_force, float(np.linalg.norm(wrench_force)))
+        scale = aabb_size / max_force if max_force > 1e-9 else 1.0
 
         cloud = o3d.geometry.PointCloud()
         cloud.points = o3d.utility.Vector3dVector(omega_points.astype(np.float64))
@@ -173,16 +181,15 @@ def debug_visualize_dynamics_forces(
             add_geometry(sphere)
 
         for pt, n in zip(points, normals_local):
-            arrow = make_arrow(pt, n * arrow_scale, [0.1, 0.3, 0.9])
+            arrow = make_arrow(pt, n * normal_length, [0.1, 0.3, 0.9])
             add_geometry(arrow)
 
         for idx in range(points.shape[0]):
             force = f_vec[3 * idx : 3 * idx + 3]
-            arrow = make_arrow(points[idx], force, [0.9, 0.2, 0.2])
+            arrow = make_arrow(points[idx], force * scale, [0.9, 0.2, 0.2])
             add_geometry(arrow)
 
-        wrench_force = np.asarray(wrench[:3], dtype=np.float64)
-        add_geometry(make_arrow(center, wrench_force, [0.9, 0.7, 0.2]))
+        add_geometry(make_arrow(center, wrench_force * scale, [0.9, 0.7, 0.2]))
 
         residual = runner.calculator.calc_force_residual(candidate, wrench, center, f_vec)
         LOGGER.info(
@@ -194,6 +201,7 @@ def debug_visualize_dynamics_forces(
             residual,
             np.array2string(f_vec, precision=4, separator=","),
         )
+        vis.reset_view_point(True)
 
     def on_page_up(vis_obj):
         state["p_idx"] = (state["p_idx"] + 1) % len(attempts)
