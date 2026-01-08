@@ -794,14 +794,14 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
           f_init.segment(3 * j, 3) = sample;
           
           double force_angle = std::acos(normal.dot(sample) / (normal.norm() * sample.norm())) * 180.0 / M_PI;
-          SPDLOG_LOGGER_INFO(dyn_logger_, "Sampled force at contact {}: [{:+03.4f}, {:+03.4f}, {:+03.4f}]  normal [{:+03.4f}, {:+03.4f}, {:+03.4f}], point [{:+03.4f}, {:+03.4f}, {:+03.4f}], angle {:.4f} deg", j, 
-            sample(0), sample(1), sample(2), normal(0), normal(1), normal(2), p.x, p.y, p.z, force_angle);
+          // SPDLOG_LOGGER_INFO(dyn_logger_, "Sampled force at contact {}: [{:+03.4f}, {:+03.4f}, {:+03.4f}]  normal [{:+03.4f}, {:+03.4f}, {:+03.4f}], point [{:+03.4f}, {:+03.4f}, {:+03.4f}], angle {:.4f} deg", j, 
+          //   sample(0), sample(1), sample(2), normal(0), normal(1), normal(2), p.x, p.y, p.z, force_angle);
         assert(force_angle <= cone_angle_max_deg + 1e-2);
       }
 
 
-      char a;
-      std::cin >> a;
+      // char a;
+      // std::cin >> a;
       
 
       // t = (-wrench) - G * f_init
@@ -834,11 +834,11 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
       // std::cout << std::endl;  // Print segments
 
       double residual = residual_vec.norm();
-      std::cout << "residual_vec: " << residual_vec.transpose() << "wrench: " << wrench_used.transpose() << std::endl;
+      // std::cout << "residual_vec: " << residual_vec.transpose() << "wrench: " << wrench_used.transpose() << std::endl;
       bool balance_ok = residual <= balance_threshold;
-      if (balance_ok && dyn_logger_) {
-        SPDLOG_LOGGER_INFO(dyn_logger_, "-=-=-=-= Attempt [{},{}] succeeded: residual={:.6f}", i, attempt + 1, residual);
-      }
+      // if (balance_ok && dyn_logger_) {
+      //   SPDLOG_LOGGER_INFO(dyn_logger_, "-=-=-=-= Attempt [{},{}] succeeded: residual={:.6f}", i, attempt + 1, residual);
+      // }
 
       bool cone_ok = true;
       std::vector<double> magnitudes;
@@ -882,6 +882,14 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
 
       if (balance_ok && cone_ok) {
         has_valid = true;
+        if (dyn_logger_) {
+          SPDLOG_LOGGER_INFO(dyn_logger_,
+                             "  Valid forces found: e_mag={:.6f} e_dir={:.6f} e_var={:.6f} total={:.6f}",
+                             e_mag,
+                             e_dir,
+                             e_var,
+                             total);
+        }
         if (total > best_score) {
           best_score = total;
         }
