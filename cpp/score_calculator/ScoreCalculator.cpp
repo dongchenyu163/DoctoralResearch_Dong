@@ -435,23 +435,33 @@ Eigen::VectorXd ScoreCalculator::calcPositionalDistances(
 }
 
 // Algorithm 4: evaluate dynamics feasibility, residuals, and score terms.
+// 算法4：评估动力学可行性、残差和评分项
 Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     const Eigen::Ref<const CandidateMatrix>& candidate_indices,
     const Eigen::VectorXd& wrench,
     double friction_coef,
     double friction_angle_deg) const {
+  // 验证输入：检查候选索引矩阵和点云是否有效
   if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
     return Eigen::VectorXd(0);
   }
   if (dyn_logger_) {
     SPDLOG_LOGGER_INFO(dyn_logger_, "Dynamics scoring on {} rows; wrench norm={}", candidate_indices.rows(), wrench.norm());
   }
+  
+  // 初始化评分向量，每行候选配置对应一个评分
   const Eigen::Index rows = candidate_indices.rows();
   Eigen::VectorXd scores(rows);
+  
+  // 将摩擦角从度转换为弧度，并预计算正切值用于摩擦锥约束检查
   double friction_angle_rad = friction_angle_deg * M_PI / 180.0;
   double tan_angle = std::tan(friction_angle_rad);
+  
+  // 遍历每个候选抓取配置（每行代表一组接触点）
   for (Eigen::Index i = 0; i < rows; ++i) {
     Eigen::VectorXi indices = candidate_indices.row(i);
+    
+    // 验证当前行的所有索引是否在点云范围内
     bool valid = true;
     for (Eigen::Index j = 0; j < indices.size(); ++j) {
       if (indices(j) < 0 || indices(j) >= static_cast<int>(cloud_->size())) {
@@ -463,58 +473,102 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
       scores(i) = 0.0;
       continue;
     }
+    
+    // 构建抓取矩阵 G (6×3n)，其中 n 是接触点数量
+    // G = [I, I, ...; skew(p1), skew(p2), ...] 用于映射接触力到物体扭矩
     Eigen::MatrixXd G = buildGraspMatrix(indices);
+    
+    // 求解最小二乘问题 G*f = -wrench，得到每个接触点的力向量
     Eigen::VectorXd f = G.completeOrthogonalDecomposition().solve(-wrench);
+    
+    // 计算残差向量 G*f + wrench，衡量抓取平衡性
     Eigen::VectorXd residual_vec = G * f + wrench;
     double residual = residual_vec.norm();
+    
+    // 平衡度评分：残差越小，平衡度越高
     double balance = 1.0 / (1.0 + residual);
+    
+    // 初始化接触点分析所需的变量
     Eigen::Index contact_count = indices.size();
-    int feasible_contacts = 0;
-    std::vector<double> magnitudes;
+    int feasible_contacts = 0;  // 满足摩擦锥约束的接触点数量
+    std::vector<double> magnitudes;  // 各接触点的力大小
     magnitudes.reserve(static_cast<std::size_t>(contact_count));
-    Eigen::Vector3d net_force = Eigen::Vector3d::Zero();
+    Eigen::Vector3d net_force = Eigen::Vector3d::Zero();  // 合力
+    
+    // 遍历每个接触点，检查摩擦锥约束和力的特性
     for (Eigen::Index j = 0; j < contact_count; ++j) {
       const auto& p = cloud_->points[static_cast<std::size_t>(indices(j))];
+      
+      // 获取接触点的法向量
       Eigen::Vector3d normal(static_cast<double>(p.normal_x), static_cast<double>(p.normal_y), static_cast<double>(p.normal_z));
       if (normal.norm() < 1e-6) {
+        // 如果法向量无效，使用默认的竖直方向
         normal = Eigen::Vector3d(0.0, 1.0, 0.0);
       } else {
         normal.normalize();
       }
+      
+      // 提取该接触点的三维力向量
       Eigen::Vector3d contact_force = f.segment(3 * j, 3);
+      
+      // 累加合力和记录力的大小
       net_force += contact_force;
       magnitudes.push_back(contact_force.norm());
+      
+      // 将接触力分解为法向分量和切向分量
       double normal_component = contact_force.dot(normal);
       Eigen::Vector3d tangential_vec = contact_force - normal_component * normal;
       double tangential = tangential_vec.norm();
+      
+      // 计算摩擦锥约束：切向力 ≤ μ * |法向力| * tan(α)
       double limit = friction_coef * std::max(normal_component, 0.0) * tan_angle;
+      
+      // 检查是否满足约束：法向力为正且切向力在限制内
       if (normal_component > 0.0 && tangential <= limit + 1e-9) {
         ++feasible_contacts;
       }
     }
+    
+    // 可行性评分：满足摩擦锥约束的接触点占比
     double feasibility = contact_count > 0 ? static_cast<double>(feasible_contacts) / static_cast<double>(contact_count) : 0.0;
-    double wrench_force = wrench.head(3).norm();
-    double net_force_norm = net_force.norm();
+    
+    // 计算力的大小匹配度：合力大小与期望外力（wrench）的匹配程度
+    double wrench_force = wrench.head(3).norm();  // 期望外力的大小
+    double net_force_norm = net_force.norm();     // 实际合力的大小
     double e_mag = 1.0 / (1.0 + std::abs(net_force_norm - wrench_force));
+    
+    // 计算力的方向匹配度：合力方向与期望方向的一致性
     double e_dir = 0.0;
     if (net_force_norm > 1e-9 && wrench_force > 1e-9) {
+      // 余弦相似度：合力方向与负wrench方向的点积
       e_dir = std::max(0.0, net_force.normalized().dot((-wrench.head(3)).normalized()));
     }
+    
+    // 计算力的均匀性：各接触点力大小的一致性（方差越小越好）
     double e_var = 0.0;
     if (magnitudes.size() > 1) {
+      // 计算力大小的均值
       double mean = std::accumulate(magnitudes.begin(), magnitudes.end(), 0.0) / magnitudes.size();
+      // 计算方差
       double var = 0.0;
       for (double m : magnitudes) {
         var += (m - mean) * (m - mean);
       }
       var /= magnitudes.size();
+      // 方差越小，均匀性评分越高
       e_var = 1.0 / (1.0 + std::sqrt(var));
     } else if (!magnitudes.empty()) {
+      // 单个接触点时均匀性为满分
       e_var = 1.0;
     }
+    
+    // 综合评分：五项指标的平均值
+    // feasibility: 摩擦锥可行性, balance: 力平衡性, e_mag: 力大小匹配度
+    // e_dir: 力方向匹配度, e_var: 力均匀性
     double combined = (feasibility + balance + e_mag + e_dir + e_var) / 5.0;
     scores(i) = std::clamp(combined, 0.0, 1.0);
   }
+  
   if (dyn_logger_) {
     SPDLOG_LOGGER_DEBUG(dyn_logger_, "Dynamics scoring complete");
   }
