@@ -806,7 +806,7 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
 
       // t = (-wrench) - G * f_init
       Eigen::VectorXd t = (-wrench_used) - G * f_init;
-      Eigen::VectorXd f = f_init - G_pinv * t;
+      Eigen::VectorXd f = f_init + G_pinv * t;
 
       
       for (Eigen::Index j = 0; j < contact_count; ++j) {
