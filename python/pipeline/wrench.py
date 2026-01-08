@@ -119,6 +119,10 @@ def compute_wrench(
     else:
         LOGGER.error("Knife edge line unavailable; fracture force defaults to zero")
 
+    # 累加 刀刃断裂力 到全局总力和总扭矩
+    total_force += fracture_sum
+    total_torque += fracture_torque
+
     # ===== 2. 遍历每个接触面簇，计算摩擦力 =====
     for cluster in surface.faces:
         friction_sum = np.zeros(3, dtype=np.float64)
@@ -164,8 +168,8 @@ def compute_wrench(
         face_details.append((fracture_sum.copy(), friction_sum.copy(), fracture_torque.copy() + torque_sum.copy(), total_area))
         
         # 累加到全局总力和总扭矩
-        total_force += fracture_sum + friction_sum
-        total_torque += fracture_torque + torque_sum
+        total_force += friction_sum
+        total_torque += torque_sum
 
     # ===== 3. 组装最终扭矩向量 =====
     if not face_details:
