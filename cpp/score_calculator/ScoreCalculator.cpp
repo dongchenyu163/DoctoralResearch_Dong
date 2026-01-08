@@ -6,6 +6,8 @@
 #include <random>
 #include <stdexcept>
 
+#include <pcl/visualization/pcl_visualizer.h>
+
 namespace {
 
 spdlog::level::level_enum ParseLevel(const std::string& level) {
@@ -593,6 +595,24 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
   std::uniform_real_distribution<double> angle_dist(0.0, cone_angle_max_rad);
   std::uniform_real_distribution<double> normal_dist(force_min, force_max);
   
+  // Visualize point cloud with normals using PCL
+    // pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer("Point Cloud with Normals"));
+    // viewer->setBackgroundColor(0.3, 0.3, 0.3);
+    // pcl::visualization::PointCloudColorHandlerCustom<PointT> cloud_color_handler(cloud_, 255, 255, 255);
+    // viewer->addPointCloud<PointT>(cloud_, cloud_color_handler, "cloud");
+    // SPDLOG_LOGGER_INFO(dyn_logger_, "Point cloud size: {}", cloud_->size());
+    // viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "cloud");
+    // viewer->addPointCloudNormals<PointT, PointT>(cloud_, cloud_, 1, 0.02, "normals");
+    // viewer->addCoordinateSystem(0.1);
+    // viewer->initCameraParameters();
+    
+    // if (dyn_logger_) {
+    //   SPDLOG_LOGGER_INFO(dyn_logger_, "PCL Visualizer created. Press 'q' to close and continue.");
+    // }
+    
+    // viewer->spin();
+    // viewer->close();
+
   // 遍历每个候选抓取配置（每行代表一组接触点）
   for (Eigen::Index i = 0; i < rows; ++i) {
     if (dyn_logger_ && (i % 50 == 0 || i + 1 == rows)) {
