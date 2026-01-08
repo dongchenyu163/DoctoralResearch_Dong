@@ -857,10 +857,16 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
           e_dir += normal.dot(contact_force / mag);
         }
 
-        double normal_component = contact_force.dot(normal);
-        Eigen::Vector3d tangential_vec = contact_force - normal_component * normal;
-        double tangential = tangential_vec.norm();
-        if (normal_component <= 0.0 || tangential > normal_component * tan_angle + 1e-9) {
+        // double normal_component = contact_force.dot(normal);
+        // Eigen::Vector3d tangential_vec = contact_force - normal_component * normal;
+        // double tangential = tangential_vec.norm();
+        // if (normal_component <= 0.0 || tangential > normal_component * tan_angle + 1e-9) {
+        //   cone_ok = false;
+        // }
+
+        auto f_dir = contact_force.normalized();
+        const double nf_angle = std::acos(normal.dot(f_dir)) * 180.0 / M_PI;
+        if (nf_angle > cone_angle_max_deg + 1e-2) {
           cone_ok = false;
         }
       }
