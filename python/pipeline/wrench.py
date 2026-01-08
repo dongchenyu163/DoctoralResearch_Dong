@@ -98,6 +98,7 @@ def compute_wrench(
     if edge_line is not None and v_norm >= 1e-12:
         # blade_normal = _estimate_blade_normal(surface.faces)
         blade_normal = np.array([0, 0, 1])
+        blade_total_length = 0
         if blade_normal is None:
             LOGGER.warning("Knife blade normal unavailable; fracture force defaults to zero")
         else:
@@ -107,6 +108,14 @@ def compute_wrench(
                 force = scale * v_hat * fracture_step
                 fracture_sum += force
                 fracture_torque += np.cross(point - center, force)  # τ = (r - g) × F
+                blade_total_length += fracture_step
+            LOGGER.info(
+                "刀刃断裂力计算: 刀刃长度=%.4fm 刀刃法线=%s 切割力=%s 切割扭矩=%s",
+                blade_total_length,
+                _format_vec(blade_normal),
+                _format_vec(fracture_sum),
+                _format_vec(fracture_torque),
+            )
     else:
         LOGGER.error("Knife edge line unavailable; fracture force defaults to zero")
 
@@ -192,7 +201,7 @@ def compute_wrench(
 
 
 def _format_vec(vec: np.ndarray) -> str:
-    return np.array2string(np.asarray(vec, dtype=np.float64), precision=4, separator=",")
+    return np.array2string(np.asarray(vec, dtype=np.float64), precision=5, separator=",", suppress_small=True)
 
 
 def _safe_unit(vec: np.ndarray | None) -> Tuple[np.ndarray, float]:
