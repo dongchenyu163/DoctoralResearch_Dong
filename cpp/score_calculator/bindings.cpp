@@ -20,6 +20,8 @@ PYBIND11_MODULE(score_calculator, m) {
       .def("set_max_candidates", &ScoreCalculator::setMaxCandidates, py::arg("max_candidates"))
       .def("set_geo_weights", &ScoreCalculator::setGeoWeights, py::arg("w_fin"), py::arg("w_knf"), py::arg("w_tbl"))
       .def("set_geo_filter_ratio", &ScoreCalculator::setGeoFilterRatio, py::arg("ratio"))
+      .def("set_geo_random_seed", &ScoreCalculator::setGeoRandomSeed, py::arg("seed"))
+      .def("set_dynamics_random_seed", &ScoreCalculator::setDynamicsRandomSeed, py::arg("seed"))
       .def(
           "filter_by_geo_score",
           &ScoreCalculator::filterByGeoScore,

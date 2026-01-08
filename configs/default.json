@@ -61,6 +61,7 @@
     "fracture_step": 0.001,
     "debug_friction_contact_viz": false,
     "force_generation_attempts": 600,
+    "force_generation_seed": 42,
     "force_sample_range": {
       "force_min": 0.1,
       "force_max": 100.0,
@@ -82,6 +83,7 @@
   },
   "search": {
     "geo_filter_ratio": 0.6,
+    "geo_filter_seed": 42,
     "force_sample_count": 1000,
     "finger_count": 2,
     "table_clearance": 0.002,
@@ -89,7 +91,8 @@
     "max_geo_candidates": 2048,
     "debug_valid_indices_viz": false,
     "debug_geo_filter_viz": false,
-    "debug_geo_filter_k": 24
+    "debug_geo_filter_k": 24,
+    "debug_geo_filter_seed": 42
   },
   "trajectory": {
     "offsets": [

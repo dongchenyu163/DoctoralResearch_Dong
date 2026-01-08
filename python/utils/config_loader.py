@@ -131,6 +131,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "fracture_step": 0.001,
         "debug_friction_contact_viz": False,
         "force_generation_attempts": 600,
+        "force_generation_seed": 42,
         "force_sample_range": {
             "force_min": 0.1,
             "force_max": 1.0,
@@ -143,6 +144,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "environment": {"table_z": 0.0},
     "search": {
         "geo_filter_ratio": 0.6,
+        "geo_filter_seed": 42,
         "force_sample_count": 1000,
         "finger_count": 2,
         "table_clearance": 0.002,
@@ -150,6 +152,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "debug_valid_indices_viz": False,
         "debug_geo_filter_viz": False,
         "debug_geo_filter_k": 3,
+        "debug_geo_filter_seed": 42,
         "max_geo_candidates": 2048,
     },
     "trajectory": {

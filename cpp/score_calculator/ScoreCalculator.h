@@ -53,6 +53,8 @@ class ScoreCalculator {
   void setGeoWeights(double w_fin, double w_knf, double w_tbl) noexcept;
   // Ratio in (0,1] controlling how many combinations survive Algorithm 2.
   void setGeoFilterRatio(double ratio) noexcept;
+  void setGeoRandomSeed(std::uint32_t seed) noexcept { geo_seed_ = seed; }
+  void setDynamicsRandomSeed(std::uint32_t seed) noexcept { dyn_seed_ = seed; }
 
   // Algorithm 2: compute S_geo and select top rows.
   CandidateMatrix filterByGeoScore(const Eigen::Ref<const CandidateMatrix>& candidate_indices,
@@ -114,6 +116,8 @@ class ScoreCalculator {
   std::int64_t max_candidates_ = 0;
   double geo_ratio_ = 1.0;
   GeoWeights geo_weights_;
+  std::uint32_t geo_seed_ = 42;
+  std::uint32_t dyn_seed_ = 42;
   std::shared_ptr<spdlog::logger> core_logger_;
   std::shared_ptr<spdlog::logger> geo_logger_;
   std::shared_ptr<spdlog::logger> pos_logger_;

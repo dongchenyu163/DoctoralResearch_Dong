@@ -363,7 +363,7 @@ ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
     sampled.push_back(i);
   }
   if (max_candidates_ > 0 && max_candidates_ < keep_ratio) {
-    std::mt19937 rng(42);
+    std::mt19937 rng(geo_seed_);
     std::shuffle(sampled.begin(), sampled.end(), rng);
     sampled.resize(static_cast<std::size_t>(max_candidates_));
   }
@@ -542,7 +542,7 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
   }
   double cone_angle_max_rad = std::clamp(cone_angle_max_deg, 0.0, 89.0) * M_PI / 180.0;
 
-  std::mt19937 rng(42);
+  std::mt19937 rng(dyn_seed_);
   std::uniform_real_distribution<double> angle_dist(0.0, cone_angle_max_rad);
   std::uniform_real_distribution<double> normal_dist(force_min, force_max);
   

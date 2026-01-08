@@ -248,7 +248,7 @@ def run_pipeline(
                     order,
                     int(config.search.get("debug_geo_filter_k", 3)),
                     float(config.search.get("geo_filter_ratio", 1.0)),
-                    int(config.seed),
+                    int(config.search.get("debug_geo_filter_seed", config.seed)),
                     high_scores=True,
                     window_name=f"GeoFilter High Scores step {step_idx}",
                 )
@@ -259,7 +259,7 @@ def run_pipeline(
                     order,
                     int(config.search.get("debug_geo_filter_k", 3)),
                     float(config.search.get("geo_filter_ratio", 1.0)),
-                    int(config.seed),
+                    int(config.search.get("debug_geo_filter_seed", config.seed)),
                     high_scores=False,
                     window_name=f"GeoFilter Low Scores step {step_idx}",
                 )
