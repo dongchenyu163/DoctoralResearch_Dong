@@ -235,6 +235,7 @@ def debug_visualize_dynamics_forces(
     vis.register_key_callback(264, on_down)
 
     update_scene()
+    vis.reset_view_point(True)
     vis.run()
     vis.destroy_window()
 
