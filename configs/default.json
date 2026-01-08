@@ -66,8 +66,8 @@
     "force_generation_seed": 42,
     "force_sample_range": {
       "force_min": 10,
-      "force_max": 100.0,
-      "cone_angle_max_deg": 30.0
+      "force_max": 60.0,
+      "cone_angle_max_deg": 40.0
     },
     "friction_mesh": {
       "sample_count": 5000,
