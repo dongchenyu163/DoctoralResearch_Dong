@@ -1,3 +1,4 @@
+#include <limits>
 #include <pybind11/eigen.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -72,7 +73,8 @@ PYBIND11_MODULE(score_calculator, m) {
           py::arg("wrench"),
           py::arg("center"),
           py::arg("planar_constraint"),
-          py::arg("balance_threshold"))
+          py::arg("balance_threshold"),
+          py::arg("f_init") = Eigen::VectorXd::Constant(1, std::numeric_limits<double>::quiet_NaN()))
       .def("last_dynamics_attempts", &ScoreCalculator::lastDynamicsAttempts, py::return_value_policy::reference_internal)
       .def_property_readonly("point_count", &ScoreCalculator::pointCount);
 }

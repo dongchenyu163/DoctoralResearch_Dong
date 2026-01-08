@@ -362,7 +362,8 @@ bool ScoreCalculator::checkRandomForceBalance(const Eigen::VectorXi& indices,
                                               const Eigen::VectorXd& wrench,
                                               const Eigen::Vector3d& center,
                                               bool planar_constraint,
-                                              double balance_threshold) const {
+                                              double balance_threshold,
+                                              const Eigen::VectorXd& f_init_input) const {
   if (!cloud_ || cloud_->empty() || indices.size() == 0) {
     return false;
   }
@@ -378,17 +379,38 @@ bool ScoreCalculator::checkRandomForceBalance(const Eigen::VectorXi& indices,
 
   Eigen::MatrixXd G = buildGraspMatrix(indices, center, planar_constraint);
   Eigen::VectorXd f_init(3 * indices.size());
-  f_init.setRandom();
+  const bool use_random = (f_init_input.size() == 1 && std::isnan(f_init_input(0)));
+  if (use_random) {
+    f_init.setRandom();
+  } else {
+    if (f_init_input.size() != f_init.size()) {
+      return false;
+    }
+    f_init = f_init_input;
+  }
+
+  // Print out all information for debugging.
+  std::cout << "Grasp matrix G:\n" << G << std::endl;
+  std::cout << "Initial force f_init:\n" << f_init.transpose() << std::endl;
+  std::cout << "Wrench:\n" << wrench.transpose() << std::endl;
 
   Eigen::MatrixXd G_pinv = PseudoInverse(G, 1e-9);
   Eigen::VectorXd wrench_used = wrench;
   if (planar_constraint) {
     wrench_used = ReducePlanarWrench(wrench);
   }
+
+  std::cout << "Pseudo-inverse of G:\n" << G_pinv << std::endl;
+  std::cout << "Wrench used:\n" << wrench_used.transpose() << std::endl;
+
   Eigen::VectorXd t = (-wrench_used) - G * f_init;
   Eigen::VectorXd f = f_init + G_pinv * t;
 
+  std::cout << "Force Error t:\n" << t.transpose() << std::endl;
+  std::cout << "Corrected force f:\n" << f.transpose() << std::endl;
+
   Eigen::VectorXd residual_vec = G * f + wrench_used;
+  std::cout << "Residual vector:\n" << residual_vec.transpose() << std::endl;
   Eigen::VectorXd residual_full = residual_vec;
   if (planar_constraint) {
     residual_full = ExpandPlanarResidual(residual_vec);
@@ -795,6 +817,22 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
       }
       
       Eigen::VectorXd residual_vec = G * f + wrench_used;
+
+      // std::cout << "=============================================" << std::endl;  // Print segments
+      // std::cout << "----------------------------" << std::endl;  // Print segments
+      // std::cout << "Grasp matrix G:\n" << G << std::endl;
+      // std::cout << "Initial force f_init:\n" << f_init.transpose() << std::endl;
+      // std::cout << "Wrench:\n" << wrench.transpose() << std::endl;
+      // std::cout << "Pseudo-inverse of G:\n" << G_pinv << std::endl;
+      // std::cout << "Wrench used:\n" << wrench_used.transpose() << std::endl;
+      // std::cout << "Force Error t:\n" << t.transpose() << std::endl;
+      // std::cout << "Corrected force f:\n" << f.transpose() << std::endl;
+      // std::cout << "Residual vector:\n" << residual_vec.transpose() << std::endl;
+      // std::cout << "----------------------------" << std::endl;  // Print segments
+      // std::cout << "=============================================" << std::endl;  // Print segments
+      // std::cout << std::endl;  // Print segments
+      // std::cout << std::endl;  // Print segments
+
       double residual = residual_vec.norm();
       std::cout << "residual_vec: " << residual_vec.transpose() << "wrench: " << wrench_used.transpose() << std::endl;
       bool balance_ok = residual <= balance_threshold;

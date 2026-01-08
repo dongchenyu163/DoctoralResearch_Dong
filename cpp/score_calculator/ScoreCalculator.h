@@ -103,7 +103,9 @@ class ScoreCalculator {
                                const Eigen::VectorXd& wrench,
                                const Eigen::Vector3d& center,
                                bool planar_constraint,
-                               double balance_threshold) const;
+                               double balance_threshold,
+                               const Eigen::VectorXd& f_init =
+                                   Eigen::VectorXd::Constant(1, std::numeric_limits<double>::quiet_NaN())) const;
 
   using ForceAttempt = std::tuple<Eigen::VectorXd, double, double, double>;
   const std::vector<std::vector<ForceAttempt>>& lastDynamicsAttempts() const { return last_dyn_attempts_; }

@@ -354,19 +354,20 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
 #           [0109001628_073] force at contact 1: [-8.2733, +9.0895, -5.7699]  normal [-0.6501, +0.5071, -0.5658], point [+0.6054, -0.2799, +0.0557], angle 12.5580 deg :: calcDynamicsScores
 # residual_vec: -93.8361  55.0252 0.420093wrench:   -34.6836 0.00152259   0.355346
         calc = score_calculator.ScoreCalculator()
-        points = np.array([[0.04, 0.0, 0.0], [-0.04, 0.0, 0.0]], dtype=np.float64)
+        points = np.array([[ 0.5973, -0.2945, 0.0431], [0.6054, -0.2799, 0.0557]], dtype=np.float64)
         normals = np.zeros_like(points)
         calc.set_point_cloud(points, normals)
         indices = np.array([0, 1], dtype=np.int32)
+        f_init = np.array([-3.9611, +18.4215, -1.8142, -8.2733, +9.0895, -5.7699], dtype=np.float64)
 
         # 1. 重心在 x=0.2 (远在手指 x=0.04 之外)
-        far_com = np.array([0.2, 0.0, 0.0], dtype=np.float64)
+        far_com = np.array([0.592951, -0.256874, 0.0386061], dtype=np.float64)
 
         # 2. 施加侧向力 Fy
         # 这会产生巨大的 Mz
-        wrench_side = np.array([0.0, 10.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        wrench_side = np.array([-34.6836, 0.00152259, 0.0, 0.0, 0.0, 0.355346], dtype=np.float64)
 
-        ok = calc.check_random_force_balance(indices, wrench_side, far_com, True, 1e-4)
+        ok = calc.check_random_force_balance(indices, wrench_side, far_com, True, 1e-4, f_init)
         self.assertTrue(ok, "Should balance even if CoM is far outside the grasp width (mathematically possible)")
 
     def test_load_pcd_and_check_random_2_finger_grasp(self) -> None:
