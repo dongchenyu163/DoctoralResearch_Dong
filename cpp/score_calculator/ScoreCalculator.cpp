@@ -295,6 +295,9 @@ double ScoreCalculator::calcForceResidual(const Eigen::VectorXi& indices,
   }
   Eigen::MatrixXd G = buildGraspMatrix(indices, center);
   Eigen::VectorXd residual_vec = G * f + wrench;
+  if (dyn_logger_) {
+    SPDLOG_LOGGER_INFO(dyn_logger_, "Force residual vec=[{:+03.4f}, {:+03.4f}, {:+03.4f}, {:+03.4f}, {:+03.4f}, {:+03.4f}]", residual_vec(0), residual_vec(1), residual_vec(2), residual_vec(3), residual_vec(4), residual_vec(5));
+  }
   return residual_vec.norm();
 }
 
