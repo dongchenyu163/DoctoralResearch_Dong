@@ -99,6 +99,10 @@ class ScoreCalculator {
                            const Eigen::Vector3d& center,
                            bool planar_constraint,
                            const Eigen::VectorXd& f) const;
+  bool checkRandomForceBalance(const Eigen::VectorXi& indices,
+                               const Eigen::VectorXd& wrench,
+                               const Eigen::Vector3d& center,
+                               double balance_threshold) const;
 
   using ForceAttempt = std::tuple<Eigen::VectorXd, double, double, double>;
   const std::vector<std::vector<ForceAttempt>>& lastDynamicsAttempts() const { return last_dyn_attempts_; }

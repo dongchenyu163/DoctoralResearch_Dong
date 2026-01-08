@@ -102,6 +102,21 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
         self.assertEqual(scores.shape[0], 2)
         self.assertFalse(np.any(np.isnan(scores)))
 
+    def test_random_force_balance_cancels_wrench(self) -> None:
+        calc = score_calculator.ScoreCalculator()
+        points = np.array([[1.0, 0.0, -2.0], [-1.0, 0.0, -2.0]], dtype=np.float64)
+        normals = np.zeros_like(points)
+        calc.set_point_cloud(points, normals)
+        indices = np.array([0, 1], dtype=np.int32)
+        wrench = np.array([0.0, 0.0, -10.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        ok = calc.check_random_force_balance(
+            indices,
+            wrench,
+            np.zeros(3, dtype=np.float64),
+            1e-5,
+        )
+        self.assertTrue(ok)
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

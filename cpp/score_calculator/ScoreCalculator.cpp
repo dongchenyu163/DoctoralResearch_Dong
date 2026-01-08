@@ -318,6 +318,40 @@ double ScoreCalculator::calcForceResidual(const Eigen::VectorXi& indices,
   return residual_vec.norm();
 }
 
+bool ScoreCalculator::checkRandomForceBalance(const Eigen::VectorXi& indices,
+                                              const Eigen::VectorXd& wrench,
+                                              const Eigen::Vector3d& center,
+                                              double balance_threshold) const {
+  if (!cloud_ || cloud_->empty() || indices.size() == 0) {
+    return false;
+  }
+  if (wrench.size() != 6 || balance_threshold < 0.0) {
+    return false;
+  }
+  for (Eigen::Index j = 0; j < indices.size(); ++j) {
+    const int idx = indices(j);
+    if (idx < 0 || idx >= static_cast<int>(cloud_->size())) {
+      return false;
+    }
+  }
+
+  Eigen::MatrixXd G = buildGraspMatrix(indices, center);
+  Eigen::VectorXd f_init(3 * indices.size());
+  f_init.setRandom();
+
+  Eigen::MatrixXd G_pinv = PseudoInverse(G, 1e-9);
+  Eigen::VectorXd t = (-wrench) - G * f_init;
+  Eigen::VectorXd f = f_init + G_pinv * t;
+
+  Eigen::VectorXd residual_vec = G * f + wrench;
+  double residual = residual_vec.norm();
+  if (dyn_logger_) {
+    SPDLOG_LOGGER_INFO(dyn_logger_, "Random force balance residual={:.6f}", residual);
+  }
+  std::cout << "residual_vec: " << residual_vec.transpose() << std::endl;
+  return residual <= balance_threshold;
+}
+
 ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
     const Eigen::Ref<const CandidateMatrix>& candidate_indices,
     const Eigen::Vector3d& knife_p,

@@ -65,6 +65,13 @@ PYBIND11_MODULE(score_calculator, m) {
           py::arg("center"),
           py::arg("planar_constraint"),
           py::arg("f"))
+      .def(
+          "check_random_force_balance",
+          &ScoreCalculator::checkRandomForceBalance,
+          py::arg("indices"),
+          py::arg("wrench"),
+          py::arg("center"),
+          py::arg("balance_threshold"))
       .def("last_dynamics_attempts", &ScoreCalculator::lastDynamicsAttempts, py::return_value_policy::reference_internal)
       .def_property_readonly("point_count", &ScoreCalculator::pointCount);
 }
