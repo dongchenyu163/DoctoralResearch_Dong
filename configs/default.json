@@ -60,7 +60,7 @@
     "planar_constraint": true,
     "fracture_step": 0.001,
     "debug_friction_contact_viz": false,
-    "force_generation_attempts": 600,
+    "force_generation_attempts": 100,
     "force_generation_seed": 42,
     "force_sample_range": {
       "force_min": 0.1,
@@ -93,7 +93,8 @@
     "debug_geo_filter_viz": false,
     "debug_geo_filter_k": 24,
     "debug_geo_filter_seed": 42,
-    "debug_dynamics_force_viz": true
+    "debug_dynamics_force_viz": true,
+    "debug_points_normals_viz": true
   },
   "trajectory": {
     "offsets": [

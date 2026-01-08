@@ -79,6 +79,8 @@ def run_pipeline(
 
     geo_filter = GeoFilterRunner(config, cpp_logging=cpp_logging)
     geo_filter.set_point_cloud(preprocess_result)
+    if bool(config.search.get("debug_points_normals_viz", False)):
+        _show_points_normals(preprocess_result.points_low, preprocess_result.normals_low)
 
     log_boxed_heading(LOGGER, "2", "COMBINATIONS + TRAJECTORY INIT")
     finger_count = int(config.search.get("finger_count", 2))
@@ -479,6 +481,22 @@ def _combine_points_for_debug(omega_points: np.ndarray, contact_points: np.ndarr
     if not point_blocks:
         return np.empty((0, 3)), np.empty((0, 3))
     return np.vstack(point_blocks), np.vstack(color_blocks)
+
+
+def _show_points_normals(points: np.ndarray, normals: np.ndarray) -> None:
+    try:
+        import open3d as o3d
+    except ImportError:  # pragma: no cover
+        LOGGER.warning("open3d unavailable; skip points+normals visualization")
+        return
+    if points.size == 0:
+        LOGGER.warning("points_low empty; skip points+normals visualization")
+        return
+    cloud = o3d.geometry.PointCloud()
+    cloud.points = o3d.utility.Vector3dVector(np.asarray(points, dtype=np.float64))
+    if normals.size == points.size:
+        cloud.normals = o3d.utility.Vector3dVector(np.asarray(normals, dtype=np.float64))
+    o3d.visualization.draw_geometries([cloud], point_show_normal=True)
 
 
 def _show_geo_filter_debug(
