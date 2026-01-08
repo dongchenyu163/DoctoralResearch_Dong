@@ -156,6 +156,7 @@ def debug_visualize_dynamics_forces(
         clear_scene()
         p_idx = state["p_idx"] % len(attempts)
         f_list = attempts[p_idx]
+        angle_list = []
         if not f_list:
             LOGGER.warning("Candidate %d has no force attempts", p_idx)
             return
@@ -186,6 +187,8 @@ def debug_visualize_dynamics_forces(
 
         for idx in range(points.shape[0]):
             force = f_vec[3 * idx : 3 * idx + 3]
+            angle = float(np.arccos(np.clip(np.dot(force, normals_local[idx]) / (np.linalg.norm(force) * np.linalg.norm(normals_local[idx]) + 1e-9), -1.0, 1.0)))
+            angle_list.append(np.rad2deg(angle))
             arrow = make_arrow(points[idx], force * scale, [0.9, 0.2, 0.2])
             add_geometry(arrow)
 
@@ -193,13 +196,14 @@ def debug_visualize_dynamics_forces(
 
         residual = runner.calculator.calc_force_residual(candidate, wrench, center, f_vec)
         LOGGER.info(
-            "Dynamics viz P=%d/%d f=%d/%d residual=%.6f f=%s",
+            "Dynamics viz P=%d/%d f=%d/%d residual=%.2f f=%s",
             p_idx + 1,
             len(attempts),
             f_idx + 1,
             len(f_list),
             residual,
             np.array2string(f_vec, precision=4, separator=","),
+            np.array2string(np.asarray(angle_list, dtype=np.float64), precision=2, separator=","),
         )
         # vis.reset_view_point(True)
 
