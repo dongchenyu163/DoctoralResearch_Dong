@@ -196,7 +196,7 @@ def debug_visualize_dynamics_forces(
 
         residual = runner.calculator.calc_force_residual(candidate, wrench, center, f_vec)
         LOGGER.info(
-            "Dynamics viz P=%d/%d f=%d/%d residual=%.2f f=%s",
+            "Dynamics viz P=%d/%d f=%d/%d residual=%.2f f=%s angles=%s",
             p_idx + 1,
             len(attempts),
             f_idx + 1,
