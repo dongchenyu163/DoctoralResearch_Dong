@@ -78,12 +78,17 @@ class ScoreCalculator {
   // friction_angle_deg: friction cone aperture (°); larger = wider cone.
   // max_attempts: number of force generation attempts per candidate.
   // balance_threshold: residual norm threshold for wrench balance.
+  // force_min/max: range of sampled normal force magnitudes.
+  // cone_angle_max_deg: max half-angle for sampling inside the cone.
   Eigen::VectorXd calcDynamicsScores(const Eigen::Ref<const CandidateMatrix>& candidate_indices,
                                      const Eigen::VectorXd& wrench,
                                      double friction_coef,
                                      double friction_angle_deg,
                                      int max_attempts,
-                                     double balance_threshold) const;
+                                     double balance_threshold,
+                                     double force_min,
+                                     double force_max,
+                                     double cone_angle_max_deg) const;
 
   using ForceAttempt = std::tuple<Eigen::VectorXd, double, double, double>;
   const std::vector<std::vector<ForceAttempt>>& lastDynamicsAttempts() const { return last_dyn_attempts_; }

@@ -29,6 +29,7 @@ def compute_dynamics_scores(
             - `physics.friction_cone.angle_deg` (deg). Wider cone also relaxes tangential bounds.
             - `physics.force_generation_attempts` max attempts per candidate.
             - `physics.force_balance_threshold` residual norm threshold.
+            - `physics.force_sample_range` controls sampled force magnitudes and cone range.
     """
     if candidate_matrix.size == 0:
         return np.zeros((0,), dtype=np.float64)
@@ -36,13 +37,20 @@ def compute_dynamics_scores(
     friction_angle = float(config.physics.get("friction_cone", {}).get("angle_deg", 40.0))
     max_attempts = int(config.physics.get("force_generation_attempts", 600))
     balance_threshold = float(config.physics.get("force_balance_threshold", 1e-4))
+    sample_cfg = config.physics.get("force_sample_range", {})
+    force_min = float(sample_cfg.get("force_min", 0.1))
+    force_max = float(sample_cfg.get("force_max", 1.0))
+    cone_angle_max = float(sample_cfg.get("cone_angle_max_deg", friction_angle))
     LOGGER.debug(
-        "Dynamics scoring rows=%d μ=%.3f cone=%.3f attempts=%d balance=%.6f wrench=%s",
+        "Dynamics scoring rows=%d μ=%.3f cone=%.3f attempts=%d balance=%.6f force=[%.3f,%.3f] cone_max=%.3f wrench=%s",
         candidate_matrix.shape[0],
         friction_coef,
         friction_angle,
         max_attempts,
         balance_threshold,
+        force_min,
+        force_max,
+        cone_angle_max,
         np.array2string(wrench, precision=4, separator=","),
     )
     scores = runner.calculator.calc_dynamics_scores(
@@ -52,6 +60,9 @@ def compute_dynamics_scores(
         friction_angle,
         max_attempts,
         balance_threshold,
+        force_min,
+        force_max,
+        cone_angle_max,
     )
     LOGGER.debug(
         "Dynamics scores statistics mean=%.4f min=%.4f max=%.4f",

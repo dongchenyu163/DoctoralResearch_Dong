@@ -131,6 +131,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "fracture_step": 0.001,
         "debug_friction_contact_viz": False,
         "force_generation_attempts": 600,
+        "force_sample_range": {
+            "force_min": 0.1,
+            "force_max": 1.0,
+            "cone_angle_max_deg": 40.0,
+        },
         "friction_mesh": {"sample_count": 5000, "voxel_size": 0.002, "edge_delta": 0.002},
         "friction_cone": {"angle_deg": 40.0, "num_sides": 8},
         "force_balance_threshold": 1e-4,

@@ -42,9 +42,7 @@ Eigen::Vector3d SafeNormal(const ScoreCalculator::PointT& point) {
 }
 
 Eigen::Vector3d SampleForceInCone(const Eigen::Vector3d& normal,
-                                  double cone_tan,
                                   std::mt19937& rng,
-                                  std::uniform_real_distribution<double>& unit_dist,
                                   std::uniform_real_distribution<double>& angle_dist,
                                   std::uniform_real_distribution<double>& normal_dist) {
   Eigen::Vector3d axis = std::abs(normal.z()) < 0.9 ? Eigen::Vector3d::UnitZ() : Eigen::Vector3d::UnitX();
@@ -57,8 +55,8 @@ Eigen::Vector3d SampleForceInCone(const Eigen::Vector3d& normal,
   Eigen::Vector3d t2 = normal.cross(t1).normalized();
 
   double normal_mag = normal_dist(rng);
-  double tangential_mag = unit_dist(rng) * normal_mag * cone_tan;
   double theta = angle_dist(rng);
+  double tangential_mag = std::tan(theta) * normal_mag;
   Eigen::Vector3d tangential = (std::cos(theta) * t1 + std::sin(theta) * t2) * tangential_mag;
   return normal * normal_mag + tangential;
 }
@@ -358,16 +356,24 @@ ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
   if (geo_ratio_ > 0.0 && geo_ratio_ < 1.0) {
     keep = std::max<Eigen::Index>(1, static_cast<Eigen::Index>(std::round(geo_ratio_ * keep)));
   }
-  if (max_candidates_ > 0 && max_candidates_ < keep) {
-    keep = static_cast<Eigen::Index>(max_candidates_);
+  Eigen::Index keep_ratio = keep;
+  std::vector<Eigen::Index> sampled;
+  sampled.reserve(static_cast<std::size_t>(keep_ratio));
+  for (Eigen::Index i = 0; i < keep_ratio; ++i) {
+    sampled.push_back(i);
+  }
+  if (max_candidates_ > 0 && max_candidates_ < keep_ratio) {
+    std::mt19937 rng(42);
+    std::shuffle(sampled.begin(), sampled.end(), rng);
+    sampled.resize(static_cast<std::size_t>(max_candidates_));
   }
 
-  CandidateMatrix output(keep, candidate_indices.cols());
-  for (Eigen::Index i = 0; i < keep; ++i) {
-    output.row(i) = candidate_indices.row(order[static_cast<std::size_t>(i)].second);
+  CandidateMatrix output(static_cast<Eigen::Index>(sampled.size()), candidate_indices.cols());
+  for (Eigen::Index i = 0; i < static_cast<Eigen::Index>(sampled.size()); ++i) {
+    output.row(i) = candidate_indices.row(order[static_cast<std::size_t>(sampled[static_cast<std::size_t>(i)])].second);
   }
   if (geo_logger_) {
-    SPDLOG_LOGGER_INFO(geo_logger_, "GeoFilter kept {} rows out of {}", keep, row_scores.size());
+    SPDLOG_LOGGER_INFO(geo_logger_, "GeoFilter kept {} rows out of {}", output.rows(), row_scores.size());
   }
   return output;
 }
@@ -488,13 +494,25 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     double friction_coef,
     double friction_angle_deg,
     int max_attempts,
-    double balance_threshold) const {
+    double balance_threshold,
+    double force_min,
+    double force_max,
+    double cone_angle_max_deg) const {
   // 验证输入：检查候选索引矩阵和点云是否有效
   if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
     return Eigen::VectorXd(0);
   }
   if (dyn_logger_) {
-    SPDLOG_LOGGER_INFO(dyn_logger_, "Dynamics scoring on {} rows; wrench norm={}", candidate_indices.rows(), wrench.norm());
+    SPDLOG_LOGGER_INFO(
+        dyn_logger_,
+        "Dynamics scoring rows={} wrench_norm={:.4f} attempts={} balance={:.6f} force=[{:.3f},{:.3f}] cone_max={:.2f}deg",
+        candidate_indices.rows(),
+        wrench.norm(),
+        max_attempts,
+        balance_threshold,
+        force_min,
+        force_max,
+        cone_angle_max_deg);
   }
   
   // 初始化评分向量，每行候选配置对应一个评分
@@ -513,14 +531,26 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     max_attempts = 1;
   }
   (void)friction_coef;
+  if (force_min <= 0.0) {
+    force_min = 0.001;
+  }
+  if (force_max <= force_min) {
+    force_max = force_min + 1.0;
+  }
+  if (cone_angle_max_deg < 0.0) {
+    cone_angle_max_deg = 0.0;
+  }
+  double cone_angle_max_rad = std::clamp(cone_angle_max_deg, 0.0, 89.0) * M_PI / 180.0;
 
   std::mt19937 rng(42);
-  std::uniform_real_distribution<double> unit_dist(0.0, 1.0);
-  std::uniform_real_distribution<double> angle_dist(0.0, 2.0 * M_PI);
-  std::uniform_real_distribution<double> normal_dist(0.1, 1.0);
+  std::uniform_real_distribution<double> angle_dist(0.0, cone_angle_max_rad);
+  std::uniform_real_distribution<double> normal_dist(force_min, force_max);
   
   // 遍历每个候选抓取配置（每行代表一组接触点）
   for (Eigen::Index i = 0; i < rows; ++i) {
+    if (dyn_logger_ && (i % 50 == 0 || i + 1 == rows)) {
+      SPDLOG_LOGGER_INFO(dyn_logger_, "Dynamics progress {}/{}", i + 1, rows);
+    }
     Eigen::VectorXi indices = candidate_indices.row(i);
     
     // 验证当前行的所有索引是否在点云范围内
@@ -553,7 +583,7 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
       for (Eigen::Index j = 0; j < contact_count; ++j) {
         const auto& p = cloud_->points[static_cast<std::size_t>(indices(j))];
         Eigen::Vector3d normal = SafeNormal(p);
-        Eigen::Vector3d sample = SampleForceInCone(normal, tan_angle, rng, unit_dist, angle_dist, normal_dist);
+        Eigen::Vector3d sample = SampleForceInCone(normal, rng, angle_dist, normal_dist);
         f_init.segment(3 * j, 3) = sample;
       }
 
