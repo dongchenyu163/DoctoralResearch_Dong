@@ -113,6 +113,7 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
             indices,
             wrench,
             np.zeros(3, dtype=np.float64),
+            True,
             1e-5,
         )
         self.assertTrue(ok)
@@ -140,6 +141,7 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
             indices, 
             wrench_ignored, 
             center, 
+            True,
             1e-5,
         )
         self.assertTrue(ok_planar, "Should ignore Fz and Mx/My when planar_constraint is True")
@@ -148,7 +150,7 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
         # 施加平面内的力 Fx (沿连线方向) -> 应该能抵抗
         wrench_planar_ok = np.array([10.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
         self.assertTrue(
-            calc.check_random_force_balance(indices, wrench_planar_ok, center, 1e-5)
+            calc.check_random_force_balance(indices, wrench_planar_ok, center, True, 1e-5)
         )
 
     def test_planar_rotation_with_2_fingers(self) -> None:
@@ -169,7 +171,8 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
         ok = calc.check_random_force_balance(
             indices, 
             wrench_mz, 
-            np.zeros(3), 
+            np.zeros(3),
+            True,
             1e-5, 
         )
         self.assertTrue(ok, "2 fingers should be able to generate Mz couple in math projection")
@@ -198,7 +201,7 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
 
         # 3. 验证平衡
         # 注意：这里调用时不传 planar_constraint 参数，假设类内部已从配置读取
-        ok = calc.check_random_force_balance(indices, wrench_vertical_tilt, center, 1e-4)
+        ok = calc.check_random_force_balance(indices, wrench_vertical_tilt, center, True, 1e-4)
         
         self.assertTrue(ok, "Planar grasp should ignore Z-force and X/Y-torque (assumed supported by table)")
 
@@ -217,7 +220,7 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
         # 施加绕 Z 轴的纯力矩 Mz = 1.0 Nm
         wrench_spin = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float64)
         
-        ok = calc.check_random_force_balance(indices, wrench_spin, np.zeros(3), 1e-4)
+        ok = calc.check_random_force_balance(indices, wrench_spin, np.zeros(3), True, 1e-4)
         self.assertTrue(ok, "2 fingers should resist planar rotation (Mz) via force couple")
 
     def test_2_finger_planar_general_load(self) -> None:
@@ -237,7 +240,7 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
         # 忽略 Fz/Mx/My
         wrench_complex = np.array([5.0, -5.0, 100.0, 10.0, 10.0, 0.5], dtype=np.float64)
         
-        ok = calc.check_random_force_balance(indices, wrench_complex, np.zeros(3), 1e-4)
+        ok = calc.check_random_force_balance(indices, wrench_complex, np.zeros(3), True, 1e-4)
         self.assertTrue(ok, "Should balance complex planar wrench while ignoring vertical components")
 
     def test_2_finger_planar_singularity(self) -> None:
@@ -258,7 +261,7 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
         # 这需要两个手指产生巨大的法向力差，或者完全靠摩擦力
         wrench_axial = np.array([10.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
         
-        ok = calc.check_random_force_balance(indices, wrench_axial, np.zeros(3), 1e-4)
+        ok = calc.check_random_force_balance(indices, wrench_axial, np.zeros(3), True, 1e-4)
         self.assertTrue(ok, "Mathematical projection should find a solution even for axial forces")
 
     def test_2_finger_planar_com_offset_vertical_immunity(self) -> None:
@@ -285,7 +288,7 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
 
         # 3. 验证
         # 如果代码没有正确忽略 My，这里会失败，因为双指点接触无法抵抗 My
-        ok = calc.check_random_force_balance(indices, wrench_push, high_com, 1e-4)
+        ok = calc.check_random_force_balance(indices, wrench_push, high_com, True, 1e-4)
         self.assertTrue(ok, "High CoM tipping moment (My) should be ignored in planar mode")
 
     def test_2_finger_planar_com_offset_lever_effect(self) -> None:
@@ -314,7 +317,7 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
         # 3. 验证
         # 即使 wrench 里没有显式的 Mz，代码内部 buildGraspMatrix 会根据 center 自动计算出力臂。
         # 只要双指能产生抵抗 Mz 的力偶（这需要 friction/shear），就能平衡。
-        ok = calc.check_random_force_balance(indices, wrench_push, offset_com, 1e-4)
+        ok = calc.check_random_force_balance(indices, wrench_push, offset_com, True, 1e-4)
         self.assertTrue(ok, "Fingers should resist the Mz induced by pushing an offset CoM")
 
     def test_2_finger_planar_com_outside_grasp(self) -> None:
@@ -337,7 +340,7 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
         # 这会产生巨大的 Mz
         wrench_side = np.array([0.0, 10.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
 
-        ok = calc.check_random_force_balance(indices, wrench_side, far_com, 1e-4)
+        ok = calc.check_random_force_balance(indices, wrench_side, far_com, True, 1e-4)
         self.assertTrue(ok, "Should balance even if CoM is far outside the grasp width (mathematically possible)")
 
     def test_load_pcd_and_check_random_2_finger_grasp(self) -> None:
@@ -389,7 +392,8 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
         # 5. 定义外力 (Wrench)
         # 模拟切割时的平面受力：侧向推力 Fx=5N, 切割阻力 Fy=-5N, 及其产生的平面力矩
         # 假设配置中开启了 planar_constraint，忽略 Fz, Mx, My
-        wrench = np.array([5.0, -5.0, 0.0, 0.0, 0.0, 0.5], dtype=np.float64)
+        # -34.6836 0.00152259   0.355346
+        wrench = np.array([-34.6836, 0.00152259, 0.0, 0.0, 0.0, 0.355346], dtype=np.float64)
         
         # 6. 执行检查
         # 此时 ScoreCalculator 应该通过内部配置自动应用 planar_constraint
@@ -397,6 +401,7 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
             indices,
             wrench,
             center_of_mass,
+            True, 
             1e-4
         )
         

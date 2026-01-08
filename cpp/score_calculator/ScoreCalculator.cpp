@@ -99,6 +99,31 @@ Eigen::Vector3d SampleForceInCone(const Eigen::Vector3d& normal,
   return dir * scale;
 }
 
+Eigen::VectorXd ReducePlanarWrench(const Eigen::VectorXd& wrench) {
+  Eigen::VectorXd reduced(3);
+  reduced(0) = wrench(0);
+  reduced(1) = wrench(1);
+  reduced(2) = wrench(5);
+  return reduced;
+}
+
+Eigen::VectorXd ExpandPlanarResidual(const Eigen::VectorXd& residual) {
+  Eigen::VectorXd expanded(6);
+  expanded.setZero();
+  expanded(0) = residual(0);
+  expanded(1) = residual(1);
+  expanded(5) = residual(2);
+  return expanded;
+}
+
+Eigen::MatrixXd ReducePlanarGraspMatrix(const Eigen::MatrixXd& grasp) {
+  Eigen::MatrixXd reduced(3, grasp.cols());
+  reduced.row(0) = grasp.row(0);
+  reduced.row(1) = grasp.row(1);
+  reduced.row(2) = grasp.row(5);
+  return reduced;
+}
+
 // Store Ω_low points inside a PCL cloud so every algorithm reuses identical data.
 void ScoreCalculator::setPointCloud(const Eigen::Ref<const PointMatrix>& points,
                                     const Eigen::Ref<const PointMatrix>& normals) {
@@ -274,7 +299,9 @@ Eigen::Vector3d ScoreCalculator::computeCentroid(const PointCloud& subset) const
 }
 
 // Algorithm 4: construct grasp matrix G = [I; skew(p_i)] for each contact.
-Eigen::MatrixXd ScoreCalculator::buildGraspMatrix(const Eigen::VectorXi& indices, const Eigen::Vector3d& center) const {
+Eigen::MatrixXd ScoreCalculator::buildGraspMatrix(const Eigen::VectorXi& indices,
+                                                  const Eigen::Vector3d& center,
+                                                  bool planar_constraint) const {
   const Eigen::Index contacts = indices.size();
   Eigen::MatrixXd G(6, 3 * contacts);
   G.setZero();
@@ -291,6 +318,9 @@ Eigen::MatrixXd ScoreCalculator::buildGraspMatrix(const Eigen::VectorXi& indices
     G.block<3, 3>(0, 3 * j) = Eigen::Matrix3d::Identity();
     G.block<3, 3>(3, 3 * j) = skew;
   }
+  if (planar_constraint) {
+    return ReducePlanarGraspMatrix(G);
+  }
   return G;
 }
 
@@ -305,15 +335,25 @@ double ScoreCalculator::calcForceResidual(const Eigen::VectorXi& indices,
   if (f.size() != indices.size() * 3) {
     return std::numeric_limits<double>::infinity();
   }
-  Eigen::MatrixXd G = buildGraspMatrix(indices, center);
-  Eigen::VectorXd residual_vec = G * f + wrench;
-  if (planar_constraint && residual_vec.size() >= 5) {
-    residual_vec(2) = 0.0;
-    residual_vec(3) = 0.0;
-    residual_vec(4) = 0.0;
+  Eigen::MatrixXd G = buildGraspMatrix(indices, center, planar_constraint);
+  Eigen::VectorXd wrench_used = wrench;
+  if (planar_constraint) {
+    wrench_used = ReducePlanarWrench(wrench);
+  }
+  Eigen::VectorXd residual_vec = G * f + wrench_used;
+  Eigen::VectorXd residual_full = residual_vec;
+  if (planar_constraint) {
+    residual_full = ExpandPlanarResidual(residual_vec);
   }
   if (dyn_logger_) {
-    SPDLOG_LOGGER_INFO(dyn_logger_, "Force residual vec=[{:+03.4f}, {:+03.4f}, {:+03.4f}, {:+03.4f}, {:+03.4f}, {:+03.4f}]", residual_vec(0), residual_vec(1), residual_vec(2), residual_vec(3), residual_vec(4), residual_vec(5));
+    SPDLOG_LOGGER_INFO(dyn_logger_,
+                       "Force residual vec=[{:+03.4f}, {:+03.4f}, {:+03.4f}, {:+03.4f}, {:+03.4f}, {:+03.4f}]",
+                       residual_full(0),
+                       residual_full(1),
+                       residual_full(2),
+                       residual_full(3),
+                       residual_full(4),
+                       residual_full(5));
   }
   return residual_vec.norm();
 }
@@ -321,6 +361,7 @@ double ScoreCalculator::calcForceResidual(const Eigen::VectorXi& indices,
 bool ScoreCalculator::checkRandomForceBalance(const Eigen::VectorXi& indices,
                                               const Eigen::VectorXd& wrench,
                                               const Eigen::Vector3d& center,
+                                              bool planar_constraint,
                                               double balance_threshold) const {
   if (!cloud_ || cloud_->empty() || indices.size() == 0) {
     return false;
@@ -335,26 +376,38 @@ bool ScoreCalculator::checkRandomForceBalance(const Eigen::VectorXi& indices,
     }
   }
 
-  Eigen::MatrixXd G = buildGraspMatrix(indices, center);
+  Eigen::MatrixXd G = buildGraspMatrix(indices, center, planar_constraint);
   Eigen::VectorXd f_init(3 * indices.size());
   f_init.setRandom();
-  std::cout << " Random force: " << f_init.transpose() << std::endl;
 
   Eigen::MatrixXd G_pinv = PseudoInverse(G, 1e-9);
-  Eigen::VectorXd t = (-wrench) - G * f_init;
+  Eigen::VectorXd wrench_used = wrench;
+  if (planar_constraint) {
+    wrench_used = ReducePlanarWrench(wrench);
+  }
+  Eigen::VectorXd t = (-wrench_used) - G * f_init;
   Eigen::VectorXd f = f_init + G_pinv * t;
 
-  Eigen::VectorXd residual_vec = G * f + wrench;
-  residual_vec(2) = 0.0; // 忽略 Fz (由桌面支撑)
-  residual_vec(3) = 0.0; // 忽略 Mx (由桌面支撑)
-  residual_vec(4) = 0.0; // 忽略 My (由桌面支撑)
+  Eigen::VectorXd residual_vec = G * f + wrench_used;
+  Eigen::VectorXd residual_full = residual_vec;
+  if (planar_constraint) {
+    residual_full = ExpandPlanarResidual(residual_vec);
+  }
   double residual = residual_vec.norm();
   if (dyn_logger_) {
     SPDLOG_LOGGER_INFO(dyn_logger_, "Random force balance residual={:.6f}", residual);
   }
-  std::cout << std::endl;
-  std::cout << "residual_vec: " << residual_vec.transpose() << std::endl;
-  std::cout << "force: " << f.transpose() << std::endl;
+  if (dyn_logger_) {
+    SPDLOG_LOGGER_INFO(
+        dyn_logger_,
+        "Random force balance residual vec=[{:+03.4f}, {:+03.4f}, {:+03.4f}, {:+03.4f}, {:+03.4f}, {:+03.4f}]",
+        residual_full(0),
+        residual_full(1),
+        residual_full(2),
+        residual_full(3),
+        residual_full(4),
+        residual_full(5));
+  }
   return residual <= balance_threshold;
 }
 
@@ -693,8 +746,12 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     
     // 构建抓取矩阵 G (6×3n)，其中 n 是接触点数量
     // G = [I, I, ...; skew(p1), skew(p2), ...] 用于映射接触力到物体扭矩
-    Eigen::MatrixXd G = buildGraspMatrix(indices, center);
+    Eigen::MatrixXd G = buildGraspMatrix(indices, center, planar_constraint);
     Eigen::MatrixXd G_pinv = PseudoInverse(G, 1e-9);
+    Eigen::VectorXd wrench_used = wrench;
+    if (planar_constraint) {
+      wrench_used = ReducePlanarWrench(wrench);
+    }
 
     Eigen::Index contact_count = indices.size();
     double best_score = -std::numeric_limits<double>::infinity();
@@ -706,11 +763,6 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     for (int attempt = 0; attempt < max_attempts; ++attempt) {
       Eigen::VectorXd f_init(3 * contact_count);
 
-      int retry_count = 3;
-      bool valid_sample = false;
-      Eigen::VectorXd f;
-      do {
-        
         for (Eigen::Index j = 0; j < contact_count; ++j) {
           const auto& p = cloud_->points[static_cast<std::size_t>(indices(j))];
           Eigen::Vector3d normal = SafeNormal(p);
@@ -718,19 +770,19 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
           f_init.segment(3 * j, 3) = sample;
           
           double force_angle = std::acos(normal.dot(sample) / (normal.norm() * sample.norm())) * 180.0 / M_PI;
-          // SPDLOG_LOGGER_INFO(dyn_logger_, "Sampled force at contact {}: [{:+03.4f}, {:+03.4f}, {:+03.4f}]  normal [{:+03.4f}, {:+03.4f}, {:+03.4f}], angle {:.4f} deg", j, sample(0), sample(1), sample(2), normal(0), normal(1), normal(2), force_angle);
+          SPDLOG_LOGGER_INFO(dyn_logger_, "Sampled force at contact {}: [{:+03.4f}, {:+03.4f}, {:+03.4f}]  normal [{:+03.4f}, {:+03.4f}, {:+03.4f}], point [{:+03.4f}, {:+03.4f}, {:+03.4f}], angle {:.4f} deg", j, 
+            sample(0), sample(1), sample(2), normal(0), normal(1), normal(2), p.x, p.y, p.z, force_angle);
         assert(force_angle <= cone_angle_max_deg + 1e-2);
       }
 
 
-      // char a;
-      // std::cin >> a;
+      char a;
+      std::cin >> a;
       
 
       // t = (-wrench) - G * f_init
-      Eigen::VectorXd t = (-wrench) - G * f_init;
-      // Eigen::VectorXd f = f_init - G_pinv * t;
-      f = f_init - G_pinv * t;
+      Eigen::VectorXd t = (-wrench_used) - G * f_init;
+      Eigen::VectorXd f = f_init - G_pinv * t;
 
       
       for (Eigen::Index j = 0; j < contact_count; ++j) {
@@ -738,22 +790,15 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
         Eigen::Vector3d normal = SafeNormal(p);
         Eigen::Vector3d sample = f.segment(3 * j, 3);
         double force_angle = std::acos(normal.dot(sample) / (normal.norm() * sample.norm())) * 180.0 / M_PI;
-        if (!(force_angle <= cone_angle_max_deg + 1e-2))      
-        {
-          valid_sample = false;
-          break;
-        }
       }
-      }while (!valid_sample && --retry_count > 0);
       
-      Eigen::VectorXd residual_vec = G * f + wrench;
-      if (planar_constraint && residual_vec.size() >= 5) {
-        residual_vec(2) = 0.0;
-        residual_vec(3) = 0.0;
-        residual_vec(4) = 0.0;
-      }
+      Eigen::VectorXd residual_vec = G * f + wrench_used;
       double residual = residual_vec.norm();
+      std::cout << "residual_vec: " << residual_vec.transpose() << "wrench: " << wrench_used.transpose() << std::endl;
       bool balance_ok = residual <= balance_threshold;
+      if (balance_ok && dyn_logger_) {
+        SPDLOG_LOGGER_INFO(dyn_logger_, "-=-=-=-= Attempt [{},{}] succeeded: residual={:.6f}", i, attempt + 1, residual);
+      }
 
       bool cone_ok = true;
       std::vector<double> magnitudes;

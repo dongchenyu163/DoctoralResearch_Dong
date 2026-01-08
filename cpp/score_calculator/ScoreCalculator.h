@@ -102,6 +102,7 @@ class ScoreCalculator {
   bool checkRandomForceBalance(const Eigen::VectorXi& indices,
                                const Eigen::VectorXd& wrench,
                                const Eigen::Vector3d& center,
+                               bool planar_constraint,
                                double balance_threshold) const;
 
   using ForceAttempt = std::tuple<Eigen::VectorXd, double, double, double>;
@@ -121,7 +122,9 @@ class ScoreCalculator {
 
   double computeMinPairwiseDistance(const PointCloud& subset) const;
   Eigen::Vector3d computeCentroid(const PointCloud& subset) const;
-  Eigen::MatrixXd buildGraspMatrix(const Eigen::VectorXi& indices, const Eigen::Vector3d& center) const;
+  Eigen::MatrixXd buildGraspMatrix(const Eigen::VectorXi& indices,
+                                   const Eigen::Vector3d& center,
+                                   bool planar_constraint) const;
 
   PointCloudPtr cloud_;
   pcl::KdTreeFLANN<PointT> kd_tree_;
