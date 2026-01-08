@@ -70,23 +70,31 @@ Eigen::Vector3d SampleForceInCone(const Eigen::Vector3d& normal,
   const double theta_max = angle_dist.b();
   const double cos_theta_max = std::cos(theta_max);
 
-  // reuse angle_dist as a [0,1] random source
-  const double u =
+  Eigen::Vector3d dir = Eigen::Vector3d::Zero();
+  double scale = 0.0;
+  do {
+    // reuse angle_dist as a [0,1] random source
+    const double u =
       (angle_dist(rng) - angle_dist.a()) / (angle_dist.b() - angle_dist.a());
-  const double cos_theta = (1.0 - u) * 1.0 + u * cos_theta_max;
-  const double sin_theta = std::sqrt(std::max(0.0, 1.0 - cos_theta * cos_theta));
+      const double cos_theta = (1.0 - u) * 1.0 + u * cos_theta_max;
+      const double sin_theta = std::sqrt(std::max(0.0, 1.0 - cos_theta * cos_theta));
 
   // --- 4) azimuth phi: internal static uniform [0, 2pi) ---
   static std::uniform_real_distribution<double> phi_dist(0.0, 2.0 * M_PI);
   const double phi = phi_dist(rng);
-
+  
   // --- 5) direction inside cone ---
-  Eigen::Vector3d dir =
-      cos_theta * n + sin_theta * (std::cos(phi) * t1 + std::sin(phi) * t2);
+  dir = cos_theta * n + sin_theta * (std::cos(phi) * t1 + std::sin(phi) * t2);
+
+  scale = (cos_theta > 1e-12) ? (Fn / cos_theta) : 0.0;
+  
+    dir.normalize();
+    n.normalize();
+  }while (dir.dot(n) < cos_theta_max);  // Reject samples outside cone
 
   // --- 6) scale so that (force · n) == Fn ---
   // since dir·n == cos(theta)
-  const double scale = (cos_theta > 1e-12) ? (Fn / cos_theta) : 0.0;
+  // scale = (cos_theta > 1e-12) ? (Fn / cos_theta) : 0.0;
   return dir * scale;
 }
 
@@ -652,7 +660,16 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
         Eigen::Vector3d normal = SafeNormal(p);
         Eigen::Vector3d sample = SampleForceInCone(normal, rng, angle_dist, normal_dist);
         f_init.segment(3 * j, 3) = sample;
+
+        double force_angle = std::acos(normal.dot(sample) / (normal.norm() * sample.norm())) * 180.0 / M_PI;
+        // SPDLOG_LOGGER_INFO(dyn_logger_, "Sampled force at contact {}: [{:+03.4f}, {:+03.4f}, {:+03.4f}]  normal [{:+03.4f}, {:+03.4f}, {:+03.4f}], angle {:.4f} deg", j, sample(0), sample(1), sample(2), normal(0), normal(1), normal(2), force_angle);
+        assert(force_angle <= cone_angle_max_deg + 1e-2);
       }
+
+
+      // char a;
+      // std::cin >> a;
+      
 
       // t = (-wrench) - G * f_init
       Eigen::VectorXd t = (-wrench) - G * f_init;
