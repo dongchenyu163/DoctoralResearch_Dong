@@ -76,6 +76,7 @@ class ScoreCalculator {
 
   // Algorithm 4: evaluate combined dynamics score per candidate.
   // wrench: 6x1 knife wrench (fx,fy,fz,mx,my,mz).
+  // center: object center (used to shift contact points for torque).
   // friction_coef: μ term; increasing it relaxes tangential limits.
   // friction_angle_deg: friction cone aperture (°); larger = wider cone.
   // max_attempts: number of force generation attempts per candidate.
@@ -84,6 +85,7 @@ class ScoreCalculator {
   // cone_angle_max_deg: max half-angle for sampling inside the cone.
   Eigen::VectorXd calcDynamicsScores(const Eigen::Ref<const CandidateMatrix>& candidate_indices,
                                      const Eigen::VectorXd& wrench,
+                                     const Eigen::Vector3d& center,
                                      double friction_coef,
                                      double friction_angle_deg,
                                      int max_attempts,
@@ -109,7 +111,7 @@ class ScoreCalculator {
 
   double computeMinPairwiseDistance(const PointCloud& subset) const;
   Eigen::Vector3d computeCentroid(const PointCloud& subset) const;
-  Eigen::MatrixXd buildGraspMatrix(const Eigen::VectorXi& indices) const;
+  Eigen::MatrixXd buildGraspMatrix(const Eigen::VectorXi& indices, const Eigen::Vector3d& center) const;
 
   PointCloudPtr cloud_;
   pcl::KdTreeFLANN<PointT> kd_tree_;

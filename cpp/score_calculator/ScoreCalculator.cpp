@@ -236,7 +236,7 @@ Eigen::Vector3d ScoreCalculator::computeCentroid(const PointCloud& subset) const
 }
 
 // Algorithm 4: construct grasp matrix G = [I; skew(p_i)] for each contact.
-Eigen::MatrixXd ScoreCalculator::buildGraspMatrix(const Eigen::VectorXi& indices) const {
+Eigen::MatrixXd ScoreCalculator::buildGraspMatrix(const Eigen::VectorXi& indices, const Eigen::Vector3d& center) const {
   const Eigen::Index contacts = indices.size();
   Eigen::MatrixXd G(6, 3 * contacts);
   G.setZero();
@@ -247,6 +247,7 @@ Eigen::MatrixXd ScoreCalculator::buildGraspMatrix(const Eigen::VectorXi& indices
     }
     const auto& p = cloud_->points[static_cast<std::size_t>(idx)];
     Eigen::Vector3d point(static_cast<double>(p.x), static_cast<double>(p.y), static_cast<double>(p.z));
+    point -= center;
     Eigen::Matrix3d skew;
     skew << 0, -point.z(), point.y(), point.z(), 0, -point.x(), -point.y(), point.x(), 0;
     G.block<3, 3>(0, 3 * j) = Eigen::Matrix3d::Identity();
@@ -491,6 +492,7 @@ Eigen::VectorXd ScoreCalculator::calcPositionalDistances(
 Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     const Eigen::Ref<const CandidateMatrix>& candidate_indices,
     const Eigen::VectorXd& wrench,
+    const Eigen::Vector3d& center,
     double friction_coef,
     double friction_angle_deg,
     int max_attempts,
@@ -568,7 +570,7 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     
     // 构建抓取矩阵 G (6×3n)，其中 n 是接触点数量
     // G = [I, I, ...; skew(p1), skew(p2), ...] 用于映射接触力到物体扭矩
-    Eigen::MatrixXd G = buildGraspMatrix(indices);
+    Eigen::MatrixXd G = buildGraspMatrix(indices, center);
     Eigen::MatrixXd G_pinv = PseudoInverse(G, 1e-9);
 
     Eigen::Index contact_count = indices.size();

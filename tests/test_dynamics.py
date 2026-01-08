@@ -27,7 +27,7 @@ class DynamicsTests(unittest.TestCase):
         runner.set_point_cloud(preprocess)
         candidates = np.array([[0, 1], [1, 2]], dtype=np.int32)
         wrench = np.ones(6, dtype=np.float64)
-        scores = compute_dynamics_scores(runner, candidates, wrench, config)
+        scores = compute_dynamics_scores(runner, candidates, wrench, np.zeros(3, dtype=np.float64), config)
         self.assertEqual(scores.shape[0], candidates.shape[0])
         self.assertFalse(np.any(np.isnan(scores)))
 

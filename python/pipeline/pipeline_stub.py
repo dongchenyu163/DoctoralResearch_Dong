@@ -211,8 +211,8 @@ def run_pipeline(
                         mesh = _faces_to_trimesh(face_block)
                         if mesh is not None:
                             pc_logger.save_mesh(stage_name, step_idx, mesh)
+            food_center = _food_center(preprocess_result)
             with recorder.section("python/wrench_compute"):
-                food_center = _food_center(preprocess_result)
                 wrench = compute_wrench(
                     contact_surface,
                     config,
@@ -282,7 +282,7 @@ def run_pipeline(
             positional_distances = geo_filter.calc_positional_distances(filtered_candidates, knife_position, knife_normal)
             pos_combined = w_pdir * positional_scores + w_pdis * positional_distances
             # Algorithm 4: dynamics score based on wrench equilibrium.
-            dynamics_scores = compute_dynamics_scores(geo_filter, filtered_candidates, wrench, config)
+            dynamics_scores = compute_dynamics_scores(geo_filter, filtered_candidates, wrench, food_center, config)
             invalid_mask = ~np.isfinite(dynamics_scores)
             if np.any(invalid_mask):
                 invalid_ids = filtered_ids[invalid_mask]

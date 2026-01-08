@@ -48,6 +48,7 @@ PYBIND11_MODULE(score_calculator, m) {
           &ScoreCalculator::calcDynamicsScores,
           py::arg("candidate_indices"),
           py::arg("wrench"),
+          py::arg("center"),
           py::arg("friction_coef"),
           py::arg("friction_angle_deg"),
           py::arg("max_attempts"),
