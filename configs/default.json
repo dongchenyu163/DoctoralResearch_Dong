@@ -53,11 +53,13 @@
   },
   "physics": {
     "friction_coef": 0.4331,
-    "fracture_toughness": 409.66,
-    "pressure_distribution": 3352.07,
+    "fracture_toughness": 545.575,
+    "fracture_toughness_OLD": 409.66,
+    "pressure_distribution": 76185.770,
+    "pressure_distribution_OLD": 3352.07,
     "planar_constraint": true,
     "fracture_step": 0.001,
-    "debug_friction_contact_viz": true,
+    "debug_friction_contact_viz": false,
     "friction_mesh": {
       "sample_count": 5000,
       "voxel_size": 0.002,
@@ -80,7 +82,7 @@
     "knife_clearance": 0.002,
     "max_geo_candidates": 2048,
     "debug_valid_indices_viz": false,
-    "debug_geo_filter_viz": true,
+    "debug_geo_filter_viz": false,
     "debug_geo_filter_k": 24
   },
   "trajectory": {
