@@ -116,8 +116,8 @@ def debug_visualize_dynamics_forces(
         if length < 1e-9:
             return None
         arrow = o3d.geometry.TriangleMesh.create_arrow(
-            cylinder_radius=max(length * 0.05, 1e-4),
-            cone_radius=max(length * 0.08, 1e-4),
+            cylinder_radius=0.002,
+            cone_radius=0.005,
             cylinder_height=length * 0.8,
             cone_height=length * 0.2,
         )
