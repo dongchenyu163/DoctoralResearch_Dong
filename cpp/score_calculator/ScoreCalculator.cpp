@@ -44,21 +44,48 @@ Eigen::Vector3d SafeNormal(const ScoreCalculator::PointT& point) {
 Eigen::Vector3d SampleForceInCone(const Eigen::Vector3d& normal,
                                   std::mt19937& rng,
                                   std::uniform_real_distribution<double>& angle_dist,
-                                  std::uniform_real_distribution<double>& normal_dist) {
-  Eigen::Vector3d axis = std::abs(normal.z()) < 0.9 ? Eigen::Vector3d::UnitZ() : Eigen::Vector3d::UnitX();
-  Eigen::Vector3d t1 = normal.cross(axis);
-  if (t1.norm() < 1e-9) {
+                                  std::uniform_real_distribution<double>& normal_dist)
+{
+  // --- 0) normalize cone axis ---
+  Eigen::Vector3d n = normal.normalized();
+
+  // --- 1) build orthonormal basis (t1, t2, n) ---
+  Eigen::Vector3d axis =
+      (std::abs(n.z()) < 0.9) ? Eigen::Vector3d::UnitZ() : Eigen::Vector3d::UnitX();
+  Eigen::Vector3d t1 = n.cross(axis);
+  if (t1.squaredNorm() < 1e-18) {
     axis = Eigen::Vector3d::UnitY();
-    t1 = normal.cross(axis);
+    t1 = n.cross(axis);
   }
   t1.normalize();
-  Eigen::Vector3d t2 = normal.cross(t1).normalized();
+  Eigen::Vector3d t2 = n.cross(t1); // already unit
 
-  double normal_mag = normal_dist(rng);
-  double theta = angle_dist(rng);
-  double tangential_mag = std::tan(theta) * normal_mag;
-  Eigen::Vector3d tangential = (std::cos(theta) * t1 + std::sin(theta) * t2) * tangential_mag;
-  return normal * normal_mag + tangential;
+  // --- 2) sample normal magnitude ---
+  const double Fn = normal_dist(rng);
+
+  // --- 3) sample theta uniformly in *area* (uniform in cos(theta)) ---
+  // angle_dist is assumed to be U[0, theta_max]
+  const double theta_max = angle_dist.b();
+  const double cos_theta_max = std::cos(theta_max);
+
+  // reuse angle_dist as a [0,1] random source
+  const double u =
+      (angle_dist(rng) - angle_dist.a()) / (angle_dist.b() - angle_dist.a());
+  const double cos_theta = (1.0 - u) * 1.0 + u * cos_theta_max;
+  const double sin_theta = std::sqrt(std::max(0.0, 1.0 - cos_theta * cos_theta));
+
+  // --- 4) azimuth phi: internal static uniform [0, 2pi) ---
+  static std::uniform_real_distribution<double> phi_dist(0.0, 2.0 * M_PI);
+  const double phi = phi_dist(rng);
+
+  // --- 5) direction inside cone ---
+  Eigen::Vector3d dir =
+      cos_theta * n + sin_theta * (std::cos(phi) * t1 + std::sin(phi) * t2);
+
+  // --- 6) scale so that (force · n) == Fn ---
+  // since dir·n == cos(theta)
+  const double scale = (cos_theta > 1e-12) ? (Fn / cos_theta) : 0.0;
+  return dir * scale;
 }
 
 // Store Ω_low points inside a PCL cloud so every algorithm reuses identical data.
