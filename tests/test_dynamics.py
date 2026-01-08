@@ -29,7 +29,7 @@ class DynamicsTests(unittest.TestCase):
         wrench = np.ones(6, dtype=np.float64)
         scores = compute_dynamics_scores(runner, candidates, wrench, config)
         self.assertEqual(scores.shape[0], candidates.shape[0])
-        self.assertTrue(np.all(scores >= 0.0))
+        self.assertFalse(np.any(np.isnan(scores)))
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -3,6 +3,7 @@
 #include <cmath>
 #include <filesystem>
 #include <numeric>
+#include <random>
 #include <stdexcept>
 
 namespace {
@@ -16,6 +17,51 @@ spdlog::level::level_enum ParseLevel(const std::string& level) {
 }
 
 }  // namespace
+
+Eigen::MatrixXd PseudoInverse(const Eigen::MatrixXd& mat, double tol) {
+  Eigen::JacobiSVD<Eigen::MatrixXd> svd(mat, Eigen::ComputeThinU | Eigen::ComputeThinV);
+  const auto& singular = svd.singularValues();
+  double max_singular = singular.size() ? singular.maxCoeff() : 0.0;
+  double threshold = tol * std::max(mat.rows(), mat.cols()) * max_singular;
+  Eigen::VectorXd inv = singular;
+  for (Eigen::Index i = 0; i < singular.size(); ++i) {
+    inv(i) = singular(i) > threshold ? 1.0 / singular(i) : 0.0;
+  }
+  return svd.matrixV() * inv.asDiagonal() * svd.matrixU().transpose();
+}
+
+Eigen::Vector3d SafeNormal(const ScoreCalculator::PointT& point) {
+  Eigen::Vector3d normal(static_cast<double>(point.normal_x),
+                         static_cast<double>(point.normal_y),
+                         static_cast<double>(point.normal_z));
+  double norm = normal.norm();
+  if (norm < 1e-6) {
+    return Eigen::Vector3d(0.0, 1.0, 0.0);
+  }
+  return normal / norm;
+}
+
+Eigen::Vector3d SampleForceInCone(const Eigen::Vector3d& normal,
+                                  double cone_tan,
+                                  std::mt19937& rng,
+                                  std::uniform_real_distribution<double>& unit_dist,
+                                  std::uniform_real_distribution<double>& angle_dist,
+                                  std::uniform_real_distribution<double>& normal_dist) {
+  Eigen::Vector3d axis = std::abs(normal.z()) < 0.9 ? Eigen::Vector3d::UnitZ() : Eigen::Vector3d::UnitX();
+  Eigen::Vector3d t1 = normal.cross(axis);
+  if (t1.norm() < 1e-9) {
+    axis = Eigen::Vector3d::UnitY();
+    t1 = normal.cross(axis);
+  }
+  t1.normalize();
+  Eigen::Vector3d t2 = normal.cross(t1).normalized();
+
+  double normal_mag = normal_dist(rng);
+  double tangential_mag = unit_dist(rng) * normal_mag * cone_tan;
+  double theta = angle_dist(rng);
+  Eigen::Vector3d tangential = (std::cos(theta) * t1 + std::sin(theta) * t2) * tangential_mag;
+  return normal * normal_mag + tangential;
+}
 
 // Store Ω_low points inside a PCL cloud so every algorithm reuses identical data.
 void ScoreCalculator::setPointCloud(const Eigen::Ref<const PointMatrix>& points,
@@ -440,7 +486,9 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     const Eigen::Ref<const CandidateMatrix>& candidate_indices,
     const Eigen::VectorXd& wrench,
     double friction_coef,
-    double friction_angle_deg) const {
+    double friction_angle_deg,
+    int max_attempts,
+    double balance_threshold) const {
   // 验证输入：检查候选索引矩阵和点云是否有效
   if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
     return Eigen::VectorXd(0);
@@ -452,10 +500,24 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
   // 初始化评分向量，每行候选配置对应一个评分
   const Eigen::Index rows = candidate_indices.rows();
   Eigen::VectorXd scores(rows);
+  last_dyn_attempts_.clear();
+  last_dyn_attempts_.resize(static_cast<std::size_t>(rows));
   
   // 将摩擦角从度转换为弧度，并预计算正切值用于摩擦锥约束检查
   double friction_angle_rad = friction_angle_deg * M_PI / 180.0;
   double tan_angle = std::tan(friction_angle_rad);
+  if (!std::isfinite(tan_angle) || tan_angle < 0.0) {
+    tan_angle = 0.0;
+  }
+  if (max_attempts <= 0) {
+    max_attempts = 1;
+  }
+  (void)friction_coef;
+
+  std::mt19937 rng(42);
+  std::uniform_real_distribution<double> unit_dist(0.0, 1.0);
+  std::uniform_real_distribution<double> angle_dist(0.0, 2.0 * M_PI);
+  std::uniform_real_distribution<double> normal_dist(0.1, 1.0);
   
   // 遍历每个候选抓取配置（每行代表一组接触点）
   for (Eigen::Index i = 0; i < rows; ++i) {
@@ -477,96 +539,87 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     // 构建抓取矩阵 G (6×3n)，其中 n 是接触点数量
     // G = [I, I, ...; skew(p1), skew(p2), ...] 用于映射接触力到物体扭矩
     Eigen::MatrixXd G = buildGraspMatrix(indices);
-    
-    // 求解最小二乘问题 G*f = -wrench，得到每个接触点的力向量
-    Eigen::VectorXd f = G.completeOrthogonalDecomposition().solve(-wrench);
-    
-    // 计算残差向量 G*f + wrench，衡量抓取平衡性
-    Eigen::VectorXd residual_vec = G * f + wrench;
-    double residual = residual_vec.norm();
-    
-    // 平衡度评分：残差越小，平衡度越高
-    double balance = 1.0 / (1.0 + residual);
-    
-    // 初始化接触点分析所需的变量
+    Eigen::MatrixXd G_pinv = PseudoInverse(G, 1e-9);
+
     Eigen::Index contact_count = indices.size();
-    int feasible_contacts = 0;  // 满足摩擦锥约束的接触点数量
-    std::vector<double> magnitudes;  // 各接触点的力大小
-    magnitudes.reserve(static_cast<std::size_t>(contact_count));
-    Eigen::Vector3d net_force = Eigen::Vector3d::Zero();  // 合力
-    
-    // 遍历每个接触点，检查摩擦锥约束和力的特性
-    for (Eigen::Index j = 0; j < contact_count; ++j) {
-      const auto& p = cloud_->points[static_cast<std::size_t>(indices(j))];
-      
-      // 获取接触点的法向量
-      Eigen::Vector3d normal(static_cast<double>(p.normal_x), static_cast<double>(p.normal_y), static_cast<double>(p.normal_z));
-      if (normal.norm() < 1e-6) {
-        // 如果法向量无效，使用默认的竖直方向
-        normal = Eigen::Vector3d(0.0, 1.0, 0.0);
-      } else {
-        normal.normalize();
+    double best_score = -std::numeric_limits<double>::infinity();
+    bool has_valid = false;
+    auto& attempts = last_dyn_attempts_[static_cast<std::size_t>(i)];
+    attempts.clear();
+    attempts.reserve(static_cast<std::size_t>(max_attempts));
+
+    for (int attempt = 0; attempt < max_attempts; ++attempt) {
+      Eigen::VectorXd f_init(3 * contact_count);
+      for (Eigen::Index j = 0; j < contact_count; ++j) {
+        const auto& p = cloud_->points[static_cast<std::size_t>(indices(j))];
+        Eigen::Vector3d normal = SafeNormal(p);
+        Eigen::Vector3d sample = SampleForceInCone(normal, tan_angle, rng, unit_dist, angle_dist, normal_dist);
+        f_init.segment(3 * j, 3) = sample;
       }
-      
-      // 提取该接触点的三维力向量
-      Eigen::Vector3d contact_force = f.segment(3 * j, 3);
-      
-      // 累加合力和记录力的大小
-      net_force += contact_force;
-      magnitudes.push_back(contact_force.norm());
-      
-      // 将接触力分解为法向分量和切向分量
-      double normal_component = contact_force.dot(normal);
-      Eigen::Vector3d tangential_vec = contact_force - normal_component * normal;
-      double tangential = tangential_vec.norm();
-      
-      // 计算摩擦锥约束：切向力 ≤ μ * |法向力| * tan(α)
-      double limit = friction_coef * std::max(normal_component, 0.0) * tan_angle;
-      
-      // 检查是否满足约束：法向力为正且切向力在限制内
-      if (normal_component > 0.0 && tangential <= limit + 1e-9) {
-        ++feasible_contacts;
+
+      // t = (-wrench) - G * f_init
+      Eigen::VectorXd t = (-wrench) - G * f_init;
+      Eigen::VectorXd f = f_init - G_pinv * t;
+
+      Eigen::VectorXd residual_vec = G * f + wrench;
+      double residual = residual_vec.norm();
+      bool balance_ok = residual <= balance_threshold;
+
+      bool cone_ok = true;
+      std::vector<double> magnitudes;
+      magnitudes.reserve(static_cast<std::size_t>(contact_count));
+      double e_dir = 0.0;
+      double sum_mag = 0.0;
+
+      for (Eigen::Index j = 0; j < contact_count; ++j) {
+        const auto& p = cloud_->points[static_cast<std::size_t>(indices(j))];
+        Eigen::Vector3d normal = SafeNormal(p);
+        Eigen::Vector3d contact_force = f.segment(3 * j, 3);
+        double mag = contact_force.norm();
+        magnitudes.push_back(mag);
+        sum_mag += mag;
+        if (mag > 1e-9) {
+          e_dir += normal.dot(contact_force / mag);
+        }
+
+        double normal_component = contact_force.dot(normal);
+        Eigen::Vector3d tangential_vec = contact_force - normal_component * normal;
+        double tangential = tangential_vec.norm();
+        if (normal_component <= 0.0 || tangential > normal_component * tan_angle + 1e-9) {
+          cone_ok = false;
+        }
+      }
+
+      double e_mag = -sum_mag;
+      double e_var = 0.0;
+      if (magnitudes.size() > 1) {
+        double mean = sum_mag / magnitudes.size();
+        double var = 0.0;
+        for (double m : magnitudes) {
+          var += (m - mean) * (m - mean);
+        }
+        var /= magnitudes.size();
+        e_var = -var;
+      }
+
+      double total = e_mag + e_dir + e_var;
+      attempts.emplace_back(f, e_mag, e_dir, e_var);
+
+      if (balance_ok && cone_ok) {
+        has_valid = true;
+        if (total > best_score) {
+          best_score = total;
+        }
       }
     }
-    
-    // 可行性评分：满足摩擦锥约束的接触点占比
-    double feasibility = contact_count > 0 ? static_cast<double>(feasible_contacts) / static_cast<double>(contact_count) : 0.0;
-    
-    // 计算力的大小匹配度：合力大小与期望外力（wrench）的匹配程度
-    double wrench_force = wrench.head(3).norm();  // 期望外力的大小
-    double net_force_norm = net_force.norm();     // 实际合力的大小
-    double e_mag = 1.0 / (1.0 + std::abs(net_force_norm - wrench_force));
-    
-    // 计算力的方向匹配度：合力方向与期望方向的一致性
-    double e_dir = 0.0;
-    if (net_force_norm > 1e-9 && wrench_force > 1e-9) {
-      // 余弦相似度：合力方向与负wrench方向的点积
-      e_dir = std::max(0.0, net_force.normalized().dot((-wrench.head(3)).normalized()));
-    }
-    
-    // 计算力的均匀性：各接触点力大小的一致性（方差越小越好）
-    double e_var = 0.0;
-    if (magnitudes.size() > 1) {
-      // 计算力大小的均值
-      double mean = std::accumulate(magnitudes.begin(), magnitudes.end(), 0.0) / magnitudes.size();
-      // 计算方差
-      double var = 0.0;
-      for (double m : magnitudes) {
-        var += (m - mean) * (m - mean);
-      }
-      var /= magnitudes.size();
-      // 方差越小，均匀性评分越高
-      e_var = 1.0 / (1.0 + std::sqrt(var));
-    } else if (!magnitudes.empty()) {
-      // 单个接触点时均匀性为满分
-      e_var = 1.0;
-    }
-    
-    // 综合评分：五项指标的平均值
-    // feasibility: 摩擦锥可行性, balance: 力平衡性, e_mag: 力大小匹配度
-    // e_dir: 力方向匹配度, e_var: 力均匀性
-    double combined = (feasibility + balance + e_mag + e_dir + e_var) / 5.0;
-    scores(i) = std::clamp(combined, 0.0, 1.0);
+
+    std::sort(attempts.begin(), attempts.end(), [](const ForceAttempt& a, const ForceAttempt& b) {
+      double total_a = std::get<1>(a) + std::get<2>(a) + std::get<3>(a);
+      double total_b = std::get<1>(b) + std::get<2>(b) + std::get<3>(b);
+      return total_a > total_b;
+    });
+
+    scores(i) = has_valid ? best_score : -std::numeric_limits<double>::infinity();
   }
   
   if (dyn_logger_) {

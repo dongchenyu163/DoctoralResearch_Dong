@@ -1,5 +1,6 @@
 #include <pybind11/eigen.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
 #include "ScoreCalculator.h"
 
@@ -46,6 +47,9 @@ PYBIND11_MODULE(score_calculator, m) {
           py::arg("candidate_indices"),
           py::arg("wrench"),
           py::arg("friction_coef"),
-          py::arg("friction_angle_deg"))
+          py::arg("friction_angle_deg"),
+          py::arg("max_attempts"),
+          py::arg("balance_threshold"))
+      .def("last_dynamics_attempts", &ScoreCalculator::lastDynamicsAttempts, py::return_value_policy::reference_internal)
       .def_property_readonly("point_count", &ScoreCalculator::pointCount);
 }

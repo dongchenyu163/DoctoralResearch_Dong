@@ -81,6 +81,9 @@ class GeoFilterRunner:
         order = self._calculator.last_geo_order()
         return np.asarray(order, dtype=np.int32)
 
+    def last_dynamics_attempts(self):
+        return self._calculator.last_dynamics_attempts()
+
     def calc_positional_scores(
         self,
         candidate_matrix: np.ndarray,

@@ -86,9 +86,9 @@ class ScoreCalculatorBindingsTests(unittest.TestCase):
         calc.set_point_cloud(points, normals)
         candidates = np.array([[0, 1], [1, 2]], dtype=np.int32)
         wrench = np.ones(6, dtype=np.float64)
-        scores = calc.calc_dynamics_scores(candidates, wrench, 0.5, 40.0)
+        scores = calc.calc_dynamics_scores(candidates, wrench, 0.5, 40.0, 10, 1e-2)
         self.assertEqual(scores.shape[0], 2)
-        self.assertTrue(np.all(scores >= 0.0))
+        self.assertFalse(np.any(np.isnan(scores)))
 
 
 if __name__ == "__main__":  # pragma: no cover

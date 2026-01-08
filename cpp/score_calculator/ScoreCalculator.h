@@ -5,6 +5,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <Eigen/Core>
@@ -75,10 +76,17 @@ class ScoreCalculator {
   // wrench: 6x1 knife wrench (fx,fy,fz,mx,my,mz).
   // friction_coef: μ term; increasing it relaxes tangential limits.
   // friction_angle_deg: friction cone aperture (°); larger = wider cone.
+  // max_attempts: number of force generation attempts per candidate.
+  // balance_threshold: residual norm threshold for wrench balance.
   Eigen::VectorXd calcDynamicsScores(const Eigen::Ref<const CandidateMatrix>& candidate_indices,
                                      const Eigen::VectorXd& wrench,
                                      double friction_coef,
-                                     double friction_angle_deg) const;
+                                     double friction_angle_deg,
+                                     int max_attempts,
+                                     double balance_threshold) const;
+
+  using ForceAttempt = std::tuple<Eigen::VectorXd, double, double, double>;
+  const std::vector<std::vector<ForceAttempt>>& lastDynamicsAttempts() const { return last_dyn_attempts_; }
 
   std::int64_t pointCount() const noexcept {
     return cloud_ ? static_cast<std::int64_t>(cloud_->size()) : 0;
@@ -106,4 +114,5 @@ class ScoreCalculator {
   std::shared_ptr<spdlog::logger> pos_logger_;
   std::shared_ptr<spdlog::logger> dyn_logger_;
   mutable Eigen::VectorXi last_geo_order_;
+  mutable std::vector<std::vector<ForceAttempt>> last_dyn_attempts_;
 };

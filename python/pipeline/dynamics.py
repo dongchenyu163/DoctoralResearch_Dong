@@ -27,21 +27,32 @@ def compute_dynamics_scores(
         config: Supplies physics knobs:
             - `physics.friction_coef` (μ). Increasing expands admissible tangential force.
             - `physics.friction_cone.angle_deg` (deg). Wider cone also relaxes tangential bounds.
+            - `physics.force_generation_attempts` max attempts per candidate.
+            - `physics.force_balance_threshold` residual norm threshold.
     """
     if candidate_matrix.size == 0:
         return np.zeros((0,), dtype=np.float64)
     friction_coef = float(config.physics.get("friction_coef", 0.5))
     friction_angle = float(config.physics.get("friction_cone", {}).get("angle_deg", 40.0))
+    max_attempts = int(config.physics.get("force_generation_attempts", 600))
+    balance_threshold = float(config.physics.get("force_balance_threshold", 1e-4))
     LOGGER.debug(
-        "Dynamics scoring rows=%d μ=%.3f cone=%.3f wrench=%s",
+        "Dynamics scoring rows=%d μ=%.3f cone=%.3f attempts=%d balance=%.6f wrench=%s",
         candidate_matrix.shape[0],
         friction_coef,
         friction_angle,
+        max_attempts,
+        balance_threshold,
         np.array2string(wrench, precision=4, separator=","),
     )
-    scores = runner.calculator.calc_dynamics_scores(candidate_matrix, wrench, friction_coef, friction_angle)
-    if scores.size:
-        scores = np.clip(scores, 0.0, 1.0)
+    scores = runner.calculator.calc_dynamics_scores(
+        candidate_matrix,
+        wrench,
+        friction_coef,
+        friction_angle,
+        max_attempts,
+        balance_threshold,
+    )
     LOGGER.debug(
         "Dynamics scores statistics mean=%.4f min=%.4f max=%.4f",
         float(scores.mean()) if scores.size else 0.0,

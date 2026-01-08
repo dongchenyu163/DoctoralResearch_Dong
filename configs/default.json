@@ -60,6 +60,7 @@
     "planar_constraint": true,
     "fracture_step": 0.001,
     "debug_friction_contact_viz": false,
+    "force_generation_attempts": 600,
     "friction_mesh": {
       "sample_count": 5000,
       "voxel_size": 0.002,

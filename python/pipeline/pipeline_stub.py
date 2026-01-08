@@ -283,6 +283,15 @@ def run_pipeline(
             pos_combined = w_pdir * positional_scores + w_pdis * positional_distances
             # Algorithm 4: dynamics score based on wrench equilibrium.
             dynamics_scores = compute_dynamics_scores(geo_filter, filtered_candidates, wrench, config)
+            invalid_mask = ~np.isfinite(dynamics_scores)
+            if np.any(invalid_mask):
+                invalid_ids = filtered_ids[invalid_mask]
+                accumulator.mark_eliminated(invalid_ids, "dynamic_infeasible", step_idx)
+                SCORES_LOGGER.debug("Step %d eliminated %d candidates by dynamics infeasibility", step_idx, invalid_ids.size)
+            valid_mask = ~invalid_mask
+            filtered_ids = filtered_ids[valid_mask]
+            pos_combined = pos_combined[valid_mask]
+            dynamics_scores = dynamics_scores[valid_mask]
             SCORES_LOGGER.debug(
                 "Step %d pos(mean=%.4f,min=%.4f,max=%.4f) dyn(mean=%.4f,min=%.4f,max=%.4f)",
                 step_idx,
@@ -294,8 +303,9 @@ def run_pipeline(
                 float(dynamics_scores.max()) if dynamics_scores.size else 0.0,
             )
 
-            with recorder.section("python/accumulate_scores"):
-                accumulator.accumulate(filtered_ids, pos_combined, dynamics_scores)
+            if filtered_ids.size:
+                with recorder.section("python/accumulate_scores"):
+                    accumulator.accumulate(filtered_ids, pos_combined, dynamics_scores)
 
             step_report["positional_score_mean"] = float(pos_combined.mean()) if pos_combined.size else 0.0
             step_report["dynamic_score_mean"] = float(dynamics_scores.mean()) if dynamics_scores.size else 0.0
