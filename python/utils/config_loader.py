@@ -153,6 +153,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "debug_geo_filter_viz": False,
         "debug_geo_filter_k": 3,
         "debug_geo_filter_seed": 42,
+        "debug_dynamics_force_viz": False,
         "max_geo_candidates": 2048,
     },
     "trajectory": {

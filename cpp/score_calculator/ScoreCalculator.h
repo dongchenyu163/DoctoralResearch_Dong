@@ -93,6 +93,10 @@ class ScoreCalculator {
                                      double force_min,
                                      double force_max,
                                      double cone_angle_max_deg) const;
+  double calcForceResidual(const Eigen::VectorXi& indices,
+                           const Eigen::VectorXd& wrench,
+                           const Eigen::Vector3d& center,
+                           const Eigen::VectorXd& f) const;
 
   using ForceAttempt = std::tuple<Eigen::VectorXd, double, double, double>;
   const std::vector<std::vector<ForceAttempt>>& lastDynamicsAttempts() const { return last_dyn_attempts_; }

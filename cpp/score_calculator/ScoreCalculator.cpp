@@ -256,6 +256,21 @@ Eigen::MatrixXd ScoreCalculator::buildGraspMatrix(const Eigen::VectorXi& indices
   return G;
 }
 
+double ScoreCalculator::calcForceResidual(const Eigen::VectorXi& indices,
+                                          const Eigen::VectorXd& wrench,
+                                          const Eigen::Vector3d& center,
+                                          const Eigen::VectorXd& f) const {
+  if (indices.size() == 0) {
+    return std::numeric_limits<double>::infinity();
+  }
+  if (f.size() != indices.size() * 3) {
+    return std::numeric_limits<double>::infinity();
+  }
+  Eigen::MatrixXd G = buildGraspMatrix(indices, center);
+  Eigen::VectorXd residual_vec = G * f + wrench;
+  return residual_vec.norm();
+}
+
 ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
     const Eigen::Ref<const CandidateMatrix>& candidate_indices,
     const Eigen::Vector3d& knife_p,

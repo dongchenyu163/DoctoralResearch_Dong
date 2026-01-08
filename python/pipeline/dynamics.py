@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from typing import Iterable
+
 import numpy as np
 
 from python.pipeline.geo_filter import GeoFilterRunner
@@ -76,4 +78,153 @@ def compute_dynamics_scores(
     return np.asarray(scores, dtype=np.float64)
 
 
-__all__ = ["compute_dynamics_scores"]
+def debug_visualize_dynamics_forces(
+    runner: GeoFilterRunner,
+    points_low: np.ndarray,
+    normals_low: np.ndarray,
+    omega_indices: np.ndarray,
+    candidate_matrix: np.ndarray,
+    wrench: np.ndarray,
+    center: np.ndarray,
+    config: Config,
+) -> None:
+    if not bool(config.search.get("debug_dynamics_force_viz", False)):
+        return
+    try:
+        import open3d as o3d
+    except ImportError:  # pragma: no cover
+        LOGGER.warning("open3d unavailable; skip dynamics force visualization")
+        return
+    if candidate_matrix.size == 0:
+        LOGGER.warning("No candidates to visualize in dynamics force debug")
+        return
+    attempts = runner.last_dynamics_attempts()
+    if not attempts:
+        LOGGER.warning("No dynamics attempts recorded for visualization")
+        return
+
+    omega_points = points_low[omega_indices] if omega_indices.size else points_low
+    normals = normals_low
+    bbox = omega_points if omega_points.size else points_low
+    scale = float(np.linalg.norm(bbox.max(axis=0) - bbox.min(axis=0))) if bbox.size else 0.1
+    sphere_radius = max(scale * 0.01, 1e-4)
+    arrow_scale = max(scale * 0.1, 1e-3)
+
+    def make_arrow(origin: np.ndarray, direction: np.ndarray, color: Iterable[float]) -> "o3d.geometry.TriangleMesh | None":
+        length = float(np.linalg.norm(direction))
+        if length < 1e-9:
+            return None
+        arrow = o3d.geometry.TriangleMesh.create_arrow(
+            cylinder_radius=arrow_scale * 0.05,
+            cone_radius=arrow_scale * 0.08,
+            cylinder_height=length * 0.8,
+            cone_height=length * 0.2,
+        )
+        z_axis = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+        direction_unit = direction / length
+        axis = np.cross(z_axis, direction_unit)
+        axis_norm = np.linalg.norm(axis)
+        if axis_norm > 1e-9:
+            angle = float(np.arccos(np.clip(np.dot(z_axis, direction_unit), -1.0, 1.0)))
+            arrow.rotate(o3d.geometry.get_rotation_matrix_from_axis_angle(axis / axis_norm * angle), center=np.zeros(3))
+        arrow.translate(origin)
+        arrow.paint_uniform_color(np.asarray(color, dtype=np.float64))
+        return arrow
+
+    def make_spheres(points: np.ndarray, color: Iterable[float]) -> list["o3d.geometry.TriangleMesh"]:
+        meshes = []
+        for pt in points:
+            sphere = o3d.geometry.TriangleMesh.create_sphere(radius=sphere_radius)
+            sphere.translate(pt)
+            sphere.paint_uniform_color(np.asarray(color, dtype=np.float64))
+            meshes.append(sphere)
+        return meshes
+
+    state = {"p_idx": 0, "f_idx": 0}
+    vis = o3d.visualization.VisualizerWithKeyCallback()
+    vis.create_window(window_name="Dynamics Force Debug", width=1200, height=900)
+
+    def clear_scene():
+        vis.clear_geometries()
+
+    def add_geometry(geom):
+        if geom is not None:
+            vis.add_geometry(geom, reset_bounding_box=False)
+
+    def update_scene() -> None:
+        clear_scene()
+        p_idx = state["p_idx"] % len(attempts)
+        f_list = attempts[p_idx]
+        if not f_list:
+            LOGGER.warning("Candidate %d has no force attempts", p_idx)
+            return
+        f_idx = state["f_idx"] % len(f_list)
+        candidate = candidate_matrix[p_idx]
+        points = points_low[candidate]
+        normals_local = normals[candidate]
+        f_vec = np.asarray(f_list[f_idx][0], dtype=np.float64).reshape(-1)
+
+        cloud = o3d.geometry.PointCloud()
+        cloud.points = o3d.utility.Vector3dVector(omega_points.astype(np.float64))
+        cloud.paint_uniform_color([0.7, 0.7, 0.7])
+        add_geometry(cloud)
+
+        for sphere in make_spheres(points, [0.1, 0.9, 0.1]):
+            add_geometry(sphere)
+
+        for pt, n in zip(points, normals_local):
+            arrow = make_arrow(pt, n * arrow_scale, [0.1, 0.3, 0.9])
+            add_geometry(arrow)
+
+        for idx in range(points.shape[0]):
+            force = f_vec[3 * idx : 3 * idx + 3]
+            arrow = make_arrow(points[idx], force, [0.9, 0.2, 0.2])
+            add_geometry(arrow)
+
+        wrench_force = np.asarray(wrench[:3], dtype=np.float64)
+        add_geometry(make_arrow(center, wrench_force, [0.9, 0.7, 0.2]))
+
+        residual = runner.calculator.calc_force_residual(candidate, wrench, center, f_vec)
+        LOGGER.info(
+            "Dynamics viz P=%d/%d f=%d/%d residual=%.6f f=%s",
+            p_idx + 1,
+            len(attempts),
+            f_idx + 1,
+            len(f_list),
+            residual,
+            np.array2string(f_vec, precision=4, separator=","),
+        )
+
+    def on_page_up(vis_obj):
+        state["p_idx"] = (state["p_idx"] + 1) % len(attempts)
+        state["f_idx"] = 0
+        update_scene()
+        return False
+
+    def on_page_down(vis_obj):
+        state["p_idx"] = (state["p_idx"] - 1) % len(attempts)
+        state["f_idx"] = 0
+        update_scene()
+        return False
+
+    def on_up(vis_obj):
+        state["f_idx"] += 1
+        update_scene()
+        return False
+
+    def on_down(vis_obj):
+        state["f_idx"] -= 1
+        update_scene()
+        return False
+
+    vis.register_key_callback(266, on_page_up)
+    vis.register_key_callback(267, on_page_down)
+    vis.register_key_callback(265, on_up)
+    vis.register_key_callback(264, on_down)
+
+    update_scene()
+    vis.run()
+    vis.destroy_window()
+
+
+__all__ = ["compute_dynamics_scores", "debug_visualize_dynamics_forces"]

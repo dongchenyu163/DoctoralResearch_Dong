@@ -17,7 +17,7 @@ import numpy as np
 from python.instrumentation.timing import TimingRecorder
 from python.pipeline.accumulate import ScoreAccumulator, build_all_combinations
 from python.pipeline.contact_surface import ContactSurfaceResult, extract_contact_surface
-from python.pipeline.dynamics import compute_dynamics_scores
+from python.pipeline.dynamics import compute_dynamics_scores, debug_visualize_dynamics_forces
 from python.pipeline.geo_filter import GeoFilterRunner
 from python.pipeline.knife_model import KnifeModel, build_knife_model
 from python.pipeline.preprocess import PreprocessResult, RawPointCloud, load_point_cloud, preprocess_point_cloud
@@ -283,6 +283,16 @@ def run_pipeline(
             pos_combined = w_pdir * positional_scores + w_pdis * positional_distances
             # Algorithm 4: dynamics score based on wrench equilibrium.
             dynamics_scores = compute_dynamics_scores(geo_filter, filtered_candidates, wrench, food_center, config)
+            debug_visualize_dynamics_forces(
+                geo_filter,
+                preprocess_result.points_low,
+                preprocess_result.normals_low,
+                valid_result.indices,
+                filtered_candidates,
+                wrench,
+                food_center,
+                config,
+            )
             invalid_mask = ~np.isfinite(dynamics_scores)
             if np.any(invalid_mask):
                 invalid_ids = filtered_ids[invalid_mask]

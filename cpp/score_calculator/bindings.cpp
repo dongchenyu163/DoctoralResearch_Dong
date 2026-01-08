@@ -56,6 +56,13 @@ PYBIND11_MODULE(score_calculator, m) {
           py::arg("force_min"),
           py::arg("force_max"),
           py::arg("cone_angle_max_deg"))
+      .def(
+          "calc_force_residual",
+          &ScoreCalculator::calcForceResidual,
+          py::arg("indices"),
+          py::arg("wrench"),
+          py::arg("center"),
+          py::arg("f"))
       .def("last_dynamics_attempts", &ScoreCalculator::lastDynamicsAttempts, py::return_value_policy::reference_internal)
       .def_property_readonly("point_count", &ScoreCalculator::pointCount);
 }

@@ -92,7 +92,8 @@
     "debug_valid_indices_viz": false,
     "debug_geo_filter_viz": false,
     "debug_geo_filter_k": 24,
-    "debug_geo_filter_seed": 42
+    "debug_geo_filter_seed": 42,
+    "debug_dynamics_force_viz": true
   },
   "trajectory": {
     "offsets": [
