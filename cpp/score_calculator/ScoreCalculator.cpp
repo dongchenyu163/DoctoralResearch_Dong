@@ -884,7 +884,7 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
       }
 
       double total = e_mag + e_dir + e_var;
-      attempts.emplace_back(f, f_init, e_mag, e_dir, e_var);
+      attempts.emplace_back(f, f_init, e_mag, e_dir, e_var, balance_ok && cone_ok);
 
       if (balance_ok && cone_ok) {
         has_valid = true;
