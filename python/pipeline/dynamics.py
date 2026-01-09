@@ -251,4 +251,167 @@ def debug_visualize_dynamics_forces(
     vis.destroy_window()
 
 
-__all__ = ["compute_dynamics_scores", "debug_visualize_dynamics_forces"]
+def debug_visualize_dynamics_f_init_forces(
+    runner: GeoFilterRunner,
+    points_low: np.ndarray,
+    normals_low: np.ndarray,
+    omega_indices: np.ndarray,
+    candidate_matrix: np.ndarray,
+    config: Config,
+) -> None:
+    if not bool(config.search.get("debug_dynamics_force_viz", False)):
+        return
+    try:
+        import open3d as o3d
+    except ImportError:  # pragma: no cover
+        LOGGER.warning("open3d unavailable; skip dynamics f_init visualization")
+        return
+    if candidate_matrix.size == 0:
+        LOGGER.warning("No candidates to visualize in dynamics f_init debug")
+        return
+    attempts = runner.last_dynamics_attempts()
+    if not attempts:
+        LOGGER.warning("No dynamics attempts recorded for f_init visualization")
+        return
+
+    omega_points = points_low[omega_indices] if omega_indices.size else points_low
+    normals = normals_low
+    bbox = omega_points if omega_points.size else points_low
+    extent = bbox.max(axis=0) - bbox.min(axis=0) if bbox.size else np.array([0.1, 0.1, 0.1])
+    aabb_size = float(np.linalg.norm(extent))
+    sphere_radius = 0.002
+    normal_length = 0.02
+
+    palette = np.array(
+        [
+            [0.121, 0.466, 0.705],
+            [1.000, 0.498, 0.054],
+            [0.172, 0.627, 0.172],
+            [0.839, 0.153, 0.157],
+            [0.580, 0.404, 0.741],
+            [0.549, 0.337, 0.294],
+            [0.890, 0.467, 0.761],
+            [0.498, 0.498, 0.498],
+            [0.737, 0.741, 0.133],
+            [0.090, 0.745, 0.811],
+            [0.682, 0.780, 0.909],
+            [0.992, 0.749, 0.435],
+            [0.565, 0.933, 0.565],
+            [0.969, 0.506, 0.749],
+            [0.796, 0.702, 0.839],
+            [0.773, 0.690, 0.670],
+            [0.968, 0.714, 0.824],
+            [0.780, 0.780, 0.780],
+            [0.859, 0.859, 0.553],
+            [0.619, 0.854, 0.898],
+        ],
+        dtype=np.float64,
+    )
+
+    def make_arrow(origin: np.ndarray, direction: np.ndarray, color: np.ndarray) -> "o3d.geometry.TriangleMesh | None":
+        length = float(np.linalg.norm(direction))
+        if length < 1e-9:
+            return None
+        arrow = o3d.geometry.TriangleMesh.create_arrow(
+            cylinder_radius=0.0005,
+            cone_radius=0.0015,
+            cylinder_height=length * 0.8,
+            cone_height=length * 0.2,
+        )
+        z_axis = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+        direction_unit = direction / length
+        axis = np.cross(z_axis, direction_unit)
+        axis_norm = np.linalg.norm(axis)
+        if axis_norm > 1e-9:
+            angle = float(np.arccos(np.clip(np.dot(z_axis, direction_unit), -1.0, 1.0)))
+            arrow.rotate(o3d.geometry.get_rotation_matrix_from_axis_angle(axis / axis_norm * angle), center=np.zeros(3))
+        arrow.translate(origin)
+        arrow.paint_uniform_color(np.asarray(color, dtype=np.float64))
+        return arrow
+
+    def make_spheres(points: np.ndarray, color: np.ndarray) -> list["o3d.geometry.TriangleMesh"]:
+        meshes = []
+        for pt in points:
+            sphere = o3d.geometry.TriangleMesh.create_sphere(radius=sphere_radius)
+            sphere.translate(pt)
+            sphere.paint_uniform_color(np.asarray(color, dtype=np.float64))
+            meshes.append(sphere)
+        return meshes
+
+    state = {"p_idx": 0}
+    vis = o3d.visualization.VisualizerWithKeyCallback()
+    vis.create_window(window_name="Dynamics f_init Debug", width=1200, height=900)
+
+    opt = vis.get_render_option()
+    opt.point_size = 17.0  # Default is typically 5.0
+
+    def clear_scene():
+        vis.clear_geometries()
+
+    def add_geometry(geom):
+        if geom is not None:
+            vis.add_geometry(geom, reset_bounding_box=False)
+
+    def update_scene() -> None:
+        clear_scene()
+        p_idx = state["p_idx"] % len(attempts)
+        f_list = attempts[p_idx]
+        if not f_list:
+            LOGGER.warning("Candidate %d has no force attempts", p_idx)
+            return
+        candidate = candidate_matrix[p_idx]
+        points = points_low[candidate]
+        normals_local = normals[candidate]
+        k = int(config.search.get("debug_dynamics_f_init_k", 5))
+        k = max(1, min(k, len(f_list)))
+
+        max_force = 0.0
+        for idx in range(k):
+            f_init_vec = np.asarray(f_list[idx][1], dtype=np.float64).reshape(-1)
+            for c_idx in range(points.shape[0]):
+                force = f_init_vec[3 * c_idx : 3 * c_idx + 3]
+                max_force = max(max_force, float(np.linalg.norm(force)))
+        scale = aabb_size / max_force if max_force > 1e-9 else 1.0
+
+        cloud = o3d.geometry.PointCloud()
+        cloud.points = o3d.utility.Vector3dVector(omega_points.astype(np.float64))
+        cloud.paint_uniform_color([0.7, 0.7, 0.7])
+        add_geometry(cloud)
+
+        for sphere in make_spheres(points, np.array([0.1, 0.9, 0.1], dtype=np.float64)):
+            add_geometry(sphere)
+
+        for pt, n in zip(points, normals_local):
+            arrow = make_arrow(pt, n * normal_length, np.array([0.1, 0.3, 0.9], dtype=np.float64))
+            add_geometry(arrow)
+
+        for idx in range(k):
+            f_init_vec = np.asarray(f_list[idx][1], dtype=np.float64).reshape(-1)
+            color = palette[idx % palette.shape[0]]
+            for c_idx in range(points.shape[0]):
+                force = f_init_vec[3 * c_idx : 3 * c_idx + 3]
+                arrow = make_arrow(points[c_idx], force * scale, color)
+                add_geometry(arrow)
+
+        LOGGER.info("Dynamics f_init viz P=%d/%d k=%d", p_idx + 1, len(attempts), k)
+
+    def on_page_up(vis_obj):
+        state["p_idx"] = (state["p_idx"] + 1) % len(attempts)
+        update_scene()
+        return False
+
+    def on_page_down(vis_obj):
+        state["p_idx"] = (state["p_idx"] - 1) % len(attempts)
+        update_scene()
+        return False
+
+    vis.register_key_callback(266, on_page_up)
+    vis.register_key_callback(267, on_page_down)
+
+    update_scene()
+    vis.reset_view_point(True)
+    vis.run()
+    vis.destroy_window()
+
+
+__all__ = ["compute_dynamics_scores", "debug_visualize_dynamics_forces", "debug_visualize_dynamics_f_init_forces"]

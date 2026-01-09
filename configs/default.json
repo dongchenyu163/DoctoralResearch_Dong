@@ -97,6 +97,7 @@
     "debug_geo_filter_k": 24,
     "debug_geo_filter_seed": 42,
     "debug_dynamics_force_viz": true,
+    "debug_dynamics_f_init_k": 15,
     "debug_points_normals_viz": true
   },
   "trajectory": {
