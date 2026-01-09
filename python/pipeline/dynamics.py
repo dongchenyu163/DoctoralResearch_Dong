@@ -147,6 +147,9 @@ def debug_visualize_dynamics_forces(
     vis = o3d.visualization.VisualizerWithKeyCallback()
     vis.create_window(window_name="Dynamics Force Debug", width=1200, height=900)
 
+    opt = vis.get_render_option()
+    opt.point_size = 17.0  # Default is typically 5.0
+
     def clear_scene():
         vis.clear_geometries()
 
