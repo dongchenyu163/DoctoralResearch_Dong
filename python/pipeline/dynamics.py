@@ -201,7 +201,7 @@ def debug_visualize_dynamics_forces(
             arrow = make_arrow(points[idx], force * scale, [0.9, 0.2, 0.2])
             add_geometry(arrow)
             init_force = f_init_vec[3 * idx : 3 * idx + 3]
-            arrow = make_arrow(points[idx], init_force * scale, [0.6, 0.6, 0.6])
+            arrow = make_arrow(points[idx], init_force * scale, [0.95, 0.6, 0.6])
             add_geometry(arrow)
 
         add_geometry(make_arrow(center, wrench_force * scale, [0.9, 0.7, 0.2]))
