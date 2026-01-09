@@ -222,6 +222,8 @@ def debug_visualize_dynamics_forces(
         # vis.reset_view_point(True)
 
     def find_next_valid(start_idx: int, step: int) -> int:
+        p_idx = state["p_idx"] % len(attempts)
+        f_list = attempts[p_idx]
         if not f_list:
             return start_idx
         count = len(f_list)
