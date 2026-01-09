@@ -221,6 +221,17 @@ def debug_visualize_dynamics_forces(
         )
         # vis.reset_view_point(True)
 
+    def find_next_valid(start_idx: int, step: int) -> int:
+        if not f_list:
+            return start_idx
+        count = len(f_list)
+        for offset in range(1, count + 1):
+            idx = (start_idx + step * offset) % count
+            attempt = f_list[idx]
+            if len(attempt) >= 6 and bool(attempt[5]):
+                return idx
+        return start_idx
+
     def on_page_up(vis_obj):
         state["p_idx"] = (state["p_idx"] + 1) % len(attempts)
         state["f_idx"] = 0
@@ -243,10 +254,22 @@ def debug_visualize_dynamics_forces(
         update_scene()
         return False
 
+    def on_home(vis_obj):
+        state["f_idx"] = find_next_valid(state["f_idx"], 1)
+        update_scene()
+        return False
+
+    def on_end(vis_obj):
+        state["f_idx"] = find_next_valid(state["f_idx"], -1)
+        update_scene()
+        return False
+
     vis.register_key_callback(266, on_page_up)
     vis.register_key_callback(267, on_page_down)
     vis.register_key_callback(265, on_up)
     vis.register_key_callback(264, on_down)
+    vis.register_key_callback(268, on_home)
+    vis.register_key_callback(269, on_end)
 
     update_scene()
     vis.reset_view_point(True)
