@@ -40,6 +40,12 @@ class GeoFilterRunner:
             float(geo_weights.get("w_knf", 1.0)),
             float(geo_weights.get("w_tbl", 1.0)),
         )
+        force_weights = config.weights.get("force_score", {})
+        self._calculator.set_force_weights(
+            float(force_weights.get("w_mag", 1.0)),
+            float(force_weights.get("w_dir", 1.0)),
+            float(force_weights.get("w_var", 1.0)),
+        )
         geo_ratio = float(config.search.get("geo_filter_ratio", 1.0))
         self._calculator.set_geo_filter_ratio(geo_ratio)
         self._calculator.set_geo_random_seed(int(config.search.get("geo_filter_seed", config.seed)))
