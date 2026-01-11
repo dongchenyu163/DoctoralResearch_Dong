@@ -800,15 +800,15 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     for (int attempt = 0; attempt < max_attempts; ++attempt) {
       Eigen::VectorXd f_init(3 * contact_count);
 
-        for (Eigen::Index j = 0; j < contact_count; ++j) {
-          const auto& p = cloud_->points[static_cast<std::size_t>(indices(j))];
-          Eigen::Vector3d normal = SafeNormal(p);
-          Eigen::Vector3d sample = SampleForceInCone(normal, rng, angle_dist, normal_dist);
-          f_init.segment(3 * j, 3) = sample;
-          
-          double force_angle = std::acos(normal.dot(sample) / (normal.norm() * sample.norm())) * 180.0 / M_PI;
-          // SPDLOG_LOGGER_INFO(dyn_logger_, "Sampled force at contact {}: [{:+03.4f}, {:+03.4f}, {:+03.4f}]  normal [{:+03.4f}, {:+03.4f}, {:+03.4f}], point [{:+03.4f}, {:+03.4f}, {:+03.4f}], angle {:.4f} deg", j, 
-          //   sample(0), sample(1), sample(2), normal(0), normal(1), normal(2), p.x, p.y, p.z, force_angle);
+      for (Eigen::Index j = 0; j < contact_count; ++j) {
+        const auto& p = cloud_->points[static_cast<std::size_t>(indices(j))];
+        Eigen::Vector3d normal = SafeNormal(p);
+        Eigen::Vector3d sample = SampleForceInCone(normal, rng, angle_dist, normal_dist);
+        f_init.segment(3 * j, 3) = sample;
+        
+        double force_angle = std::acos(normal.dot(sample) / (normal.norm() * sample.norm())) * 180.0 / M_PI;
+        // SPDLOG_LOGGER_INFO(dyn_logger_, "Sampled force at contact {}: [{:+03.4f}, {:+03.4f}, {:+03.4f}]  normal [{:+03.4f}, {:+03.4f}, {:+03.4f}], point [{:+03.4f}, {:+03.4f}, {:+03.4f}], angle {:.4f} deg", j, 
+        //   sample(0), sample(1), sample(2), normal(0), normal(1), normal(2), p.x, p.y, p.z, force_angle);
         assert(force_angle <= cone_angle_max_deg + 1e-2);
       }
 
@@ -822,12 +822,12 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
       Eigen::VectorXd f = f_init + G_pinv * t;
 
       
-      for (Eigen::Index j = 0; j < contact_count; ++j) {
-        const auto& p = cloud_->points[static_cast<std::size_t>(indices(j))];
-        Eigen::Vector3d normal = SafeNormal(p);
-        Eigen::Vector3d sample = f.segment(3 * j, 3);
-        double force_angle = std::acos(normal.dot(sample) / (normal.norm() * sample.norm())) * 180.0 / M_PI;
-      }
+      // for (Eigen::Index j = 0; j < contact_count; ++j) {
+      //   const auto& p = cloud_->points[static_cast<std::size_t>(indices(j))];
+      //   Eigen::Vector3d normal = SafeNormal(p);
+      //   Eigen::Vector3d sample = f.segment(3 * j, 3);
+      //   double force_angle = std::acos(normal.dot(sample) / (normal.norm() * sample.norm())) * 180.0 / M_PI;
+      // }
       
       Eigen::VectorXd residual_vec = G * f + wrench_used;
 
