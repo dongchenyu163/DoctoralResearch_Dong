@@ -102,6 +102,8 @@ def run_pipeline(
     valid_summary: Dict[str, object] | None = None
     last_contact_metadata: Dict[str, float] = {}
     last_wrench: np.ndarray | None = None
+    last_valid_indices: np.ndarray | None = None
+    manual_selection: Dict[str, object] | None = None
 
     pos_weights = config.weights.get("pos_score", {})
     w_pdir = float(pos_weights.get("w_pdir", 1.0))
@@ -127,6 +129,7 @@ def run_pipeline(
                     pc_logger.save_mesh("food_mesh", step_idx, preprocess_result.food_mesh)
             # PREPARE_DATA line 4: recompute Ωg for each timestep using knife plane.
             valid_result = compute_valid_indices(preprocess_result.points_low, config, recorder, knife_instance)
+            last_valid_indices = valid_result.indices
             VALID_LOGGER.info(
                 "Step %d Ωg count=%d thresholds(table>=%.4f knife<=%.4f)",
                 step_idx,
@@ -351,6 +354,7 @@ def run_pipeline(
         identity_pose = np.eye(4, dtype=np.float64)
         knife_instance = knife_model.instantiate(identity_pose)
         valid_result = compute_valid_indices(preprocess_result.points_low, config, recorder, knife_instance)
+        last_valid_indices = valid_result.indices
         valid_summary = {
             "count": int(valid_result.indices.size),
             "table_threshold": valid_result.table_threshold,
@@ -366,6 +370,26 @@ def run_pipeline(
     best_summary = (
         _build_candidate_summary(best_idx, accumulator, preprocess_result) if best_idx is not None else None
     )
+    if config.manual_select_result:
+        if trajectory_nodes:
+            manual_pose = trajectory_nodes[-1].pose
+        else:
+            manual_pose = np.eye(4, dtype=np.float64)
+        manual_instance = knife_model.instantiate(manual_pose)
+        manual_valid = compute_valid_indices(preprocess_result.points_low, config, recorder, manual_instance)
+        manual_selection = _manual_select_grasp(
+            preprocess_result.points_low,
+            preprocess_result.normals_low,
+            manual_valid.indices,
+        )
+    if bool(config.search.get("debug_best_candidate_viz", False)):
+        _show_best_candidate_grasp(
+            preprocess_result.points_low,
+            preprocess_result.normals_low,
+            last_valid_indices if last_valid_indices is not None else np.empty((0,), dtype=np.int32),
+            accumulator.combination_matrix,
+            best_idx,
+        )
     if best_summary:
         SCORES_LOGGER.info(
             "Best candidate idx=%d total=%.3f hit_count=%d",
@@ -373,7 +397,7 @@ def run_pipeline(
             best_summary["score_total"],
             best_summary["hit_count"],
         )
-    else:
+    elif manual_selection is None:
         SCORES_LOGGER.warning("No valid candidates remained after processing.")
 
     top_ids = accumulator.top_candidates(5)
@@ -393,8 +417,19 @@ def run_pipeline(
     if candidate_debug:
         score_section["candidate_debug"] = candidate_debug
 
+    final_points = []
+    final_normals = []
+    if manual_selection is not None:
+        final_points = manual_selection.get("points", [])
+        final_normals = manual_selection.get("normals", [])
+    elif best_summary:
+        final_points = best_summary.get("points", [])
+        final_normals = best_summary.get("normals", [])
+
+    status_ok = bool(best_summary) or manual_selection is not None
     result_summary = {
-        "status": "ok" if best_summary else "no_candidates",
+        "manual_select_result": bool(config.manual_select_result),
+        "status": "ok" if status_ok else "no_candidates",
         "message": "Pipeline executed with integrated accumulation.",
         "dataset": dataset_info,
         "preprocess": preprocess_summary,
@@ -404,6 +439,9 @@ def run_pipeline(
         "wrench": last_wrench.tolist() if last_wrench is not None else [],
         "trajectory": {"nodes": len(trajectory_nodes)},
         "scores": score_section,
+        "selected_points": final_points,
+        "selected_normals": final_normals,
+        "manual_selection": manual_selection,
         "timesteps": timestep_reports if instrumentation.emit_per_timestep_report else [],
     }
     return result_summary
@@ -450,10 +488,16 @@ def _build_candidate_summary(index: int, accumulator: ScoreAccumulator, preproce
     """Assemble reporting payload for a winning candidate."""
     combo = accumulator.combination_matrix[index]
     points = preprocess.points_low[combo] if preprocess.points_low.size else np.empty((0, 3))
+    normals = (
+        preprocess.normals_low[combo]
+        if preprocess.normals_low.shape == preprocess.points_low.shape
+        else np.zeros_like(points)
+    )
     return {
         "combination_index": int(index),
         "point_indices": combo.tolist(),
         "points": points.tolist(),
+        "normals": normals.tolist(),
         "score_total": float(accumulator.total_scores[index]),
         "score_positional": float(accumulator.positional_scores[index]),
         "score_dynamic": float(accumulator.dynamic_scores[index]),
@@ -509,6 +553,117 @@ def _show_points_normals(points: np.ndarray, normals: np.ndarray) -> None:
     if normals.size == points.size:
         cloud.normals = o3d.utility.Vector3dVector(np.asarray(normals, dtype=np.float64))
     o3d.visualization.draw_geometries([cloud], point_show_normal=True)
+
+
+def _show_best_candidate_grasp(
+    points_low: np.ndarray,
+    normals_low: np.ndarray,
+    omega_indices: np.ndarray,
+    candidate_matrix: np.ndarray,
+    best_idx: int | None,
+) -> None:
+    try:
+        import open3d as o3d
+    except ImportError:  # pragma: no cover
+        SCORES_LOGGER.warning("open3d unavailable; skip best candidate visualization")
+        return
+    if best_idx is None:
+        SCORES_LOGGER.warning("No best candidate available for visualization")
+        return
+    if candidate_matrix.size == 0 or best_idx < 0 or best_idx >= candidate_matrix.shape[0]:
+        SCORES_LOGGER.warning("Best candidate index out of range for visualization")
+        return
+
+    omega_points = points_low[omega_indices] if omega_indices.size else points_low
+    candidate = candidate_matrix[best_idx]
+    grasp_points = points_low[candidate]
+    normals_local = normals_low[candidate] if normals_low.shape == points_low.shape else np.zeros_like(grasp_points)
+
+    sphere_radius = 0.002
+    normal_length = 0.02
+
+    def make_arrow(origin: np.ndarray, direction: np.ndarray, color: np.ndarray) -> "o3d.geometry.TriangleMesh | None":
+        length = float(np.linalg.norm(direction))
+        if length < 1e-9:
+            return None
+        arrow = o3d.geometry.TriangleMesh.create_arrow(
+            cylinder_radius=0.0005,
+            cone_radius=0.0015,
+            cylinder_height=length * 0.8,
+            cone_height=length * 0.2,
+        )
+        z_axis = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+        direction_unit = direction / length
+        axis = np.cross(z_axis, direction_unit)
+        axis_norm = np.linalg.norm(axis)
+        if axis_norm > 1e-9:
+            angle = float(np.arccos(np.clip(np.dot(z_axis, direction_unit), -1.0, 1.0)))
+            arrow.rotate(o3d.geometry.get_rotation_matrix_from_axis_angle(axis / axis_norm * angle), center=np.zeros(3))
+        arrow.translate(origin)
+        arrow.paint_uniform_color(np.asarray(color, dtype=np.float64))
+        return arrow
+
+    cloud = o3d.geometry.PointCloud()
+    cloud.points = o3d.utility.Vector3dVector(omega_points.astype(np.float64))
+    cloud.paint_uniform_color([0.7, 0.7, 0.7])
+
+    geoms = [cloud]
+    for pt in grasp_points:
+        sphere = o3d.geometry.TriangleMesh.create_sphere(radius=sphere_radius)
+        sphere.translate(pt)
+        sphere.paint_uniform_color(np.asarray([0.1, 0.9, 0.1], dtype=np.float64))
+        geoms.append(sphere)
+
+    for pt, n in zip(grasp_points, normals_local):
+        arrow = make_arrow(pt, n * normal_length, np.asarray([0.1, 0.3, 0.9], dtype=np.float64))
+        if arrow is not None:
+            geoms.append(arrow)
+
+    o3d.visualization.draw_geometries(geoms, window_name=f"Best Grasp Candidate {best_idx}")
+
+
+def _manual_select_grasp(
+    points_low: np.ndarray,
+    normals_low: np.ndarray,
+    omega_indices: np.ndarray,
+) -> Dict[str, object] | None:
+    try:
+        import open3d as o3d
+    except ImportError:  # pragma: no cover
+        SCORES_LOGGER.warning("open3d unavailable; skip manual selection")
+        return None
+
+    if omega_indices.size == 0:
+        SCORES_LOGGER.warning("OmegaG empty; skip manual selection")
+        return None
+
+    omega_points = points_low[omega_indices]
+    omega_normals = (
+        normals_low[omega_indices] if normals_low.shape == points_low.shape else np.zeros_like(omega_points)
+    )
+
+    cloud = o3d.geometry.PointCloud()
+    cloud.points = o3d.utility.Vector3dVector(omega_points.astype(np.float64))
+    cloud.paint_uniform_color([0.7, 0.7, 0.7])
+    vis = o3d.visualization.VisualizerWithEditing()
+    vis.create_window(window_name="Manual Select Result", width=1200, height=900)
+    vis.add_geometry(cloud)
+    vis.run()
+    vis.destroy_window()
+
+    picked = vis.get_picked_points()
+    if len(picked) != 2:
+        SCORES_LOGGER.warning("Manual selection incomplete; selected=%d", len(picked))
+        return None
+
+    selected_points = omega_points[picked]
+    selected_normals = omega_normals[picked]
+    selected_global = omega_indices[picked].astype(int)
+    return {
+        "point_indices": selected_global.tolist(),
+        "points": selected_points.tolist(),
+        "normals": selected_normals.tolist(),
+    }
 
 
 def _show_geo_filter_debug(

@@ -70,6 +70,7 @@ class Config:
     search: Dict[str, Any]
     trajectory: Dict[str, Any]
     instrumentation: InstrumentationConfig
+    manual_select_result: bool
     seed: int
 
     @classmethod
@@ -83,11 +84,13 @@ class Config:
             search=dict(data["search"]),
             trajectory=dict(data.get("trajectory", {})),
             instrumentation=InstrumentationConfig.from_dict(data["instrumentation"]),
+            manual_select_result=bool(data.get("manual_select_result", False)),
             seed=int(data.get("seed", 42)),
         )
 
 
 DEFAULT_CONFIG: Dict[str, Any] = {
+    "manual_select_result": False,
     "preprocess": {
         "point_cloud_path": None,
         "synthetic_point_count": 512,
@@ -156,6 +159,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "debug_geo_filter_k": 3,
         "debug_geo_filter_seed": 42,
         "debug_dynamics_force_viz": False,
+        "debug_best_candidate_viz": False,
         "debug_dynamics_f_init_k": 15,
         "debug_points_normals_viz": False,
         "max_geo_candidates": 2048,
