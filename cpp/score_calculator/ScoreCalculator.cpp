@@ -901,14 +901,14 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
 
       if (balance_ok && cone_ok) {
         has_valid = true;
-        if (dyn_logger_) {
-          SPDLOG_LOGGER_INFO(dyn_logger_,
-                             "  Valid forces found: e_mag={:.6f} e_dir={:.6f} e_var={:.6f} total={:.6f}",
-                             e_mag,
-                             e_dir,
-                             e_var,
-                             total);
-        }
+        // if (dyn_logger_) {
+        //   SPDLOG_LOGGER_INFO(dyn_logger_,
+        //                      "  Valid forces found: e_mag={:.6f} e_dir={:.6f} e_var={:.6f} total={:.6f}",
+        //                      e_mag,
+        //                      e_dir,
+        //                      e_var,
+        //                      total);
+        // }
         if (total > best_score) {
           best_score = total;
           RawScores(i, 0) = e_mag;
@@ -922,9 +922,9 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
         // }
       }
     }
-    if (dyn_logger_) {
-      SPDLOG_LOGGER_INFO(dyn_logger_, "Found [", attempts.size(), "] attempts for candidate ", i);
-    }
+    // if (dyn_logger_) {
+    //   SPDLOG_LOGGER_INFO(dyn_logger_, "Found [{}] attempts for candidate {}", attempts.size(), i);
+    // }
     // std::sort(attempts.begin(), attempts.end(), [](const ForceAttempt& a, const ForceAttempt& b) {
     //   double total_a = std::get<2>(a) + std::get<3>(a) + std::get<4>(a);
     //   double total_b = std::get<2>(b) + std::get<3>(b) + std::get<4>(b);
