@@ -906,7 +906,9 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
         // }
       }
     }
-
+    if (dyn_logger_) {
+      SPDLOG_LOGGER_INFO(dyn_logger_, "Found [", attempts.size(), "] attempts for candidate ", i);
+    }
     // std::sort(attempts.begin(), attempts.end(), [](const ForceAttempt& a, const ForceAttempt& b) {
     //   double total_a = std::get<2>(a) + std::get<3>(a) + std::get<4>(a);
     //   double total_b = std::get<2>(b) + std::get<3>(b) + std::get<4>(b);
