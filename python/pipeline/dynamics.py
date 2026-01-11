@@ -221,18 +221,67 @@ def debug_visualize_dynamics_forces(
         )
         # vis.reset_view_point(True)
 
-    def find_next_valid(start_idx: int, step: int) -> int:
-        p_idx = state["p_idx"] % len(attempts)
-        f_list = attempts[p_idx]
+    def is_valid_attempt(attempt) -> bool:
+        return len(attempt) >= 6 and bool(attempt[5])
+
+    def find_next_valid_in_list(f_list, start_idx: int, step: int):
         if not f_list:
-            return start_idx
+            return None
         count = len(f_list)
         for offset in range(1, count + 1):
             idx = (start_idx + step * offset) % count
-            attempt = f_list[idx]
-            if len(attempt) >= 6 and bool(attempt[5]):
+            if is_valid_attempt(f_list[idx]):
                 return idx
-        return start_idx
+        return None
+
+    def find_next_valid_local(start_idx: int, step: int) -> int:
+        p_idx = state["p_idx"] % len(attempts)
+        f_list = attempts[p_idx]
+        idx = find_next_valid_in_list(f_list, start_idx, step)
+        if idx is None:
+            LOGGER.warning("No valid forces in current candidate for Home/End search")
+            return start_idx
+        return idx
+
+    def find_next_valid_global(start_idx: int, step: int):
+        total_p = len(attempts)
+        start_p = state["p_idx"] % total_p
+        for offset in range(total_p):
+            p_idx = (start_p + step * offset) % total_p
+            f_list = attempts[p_idx]
+            if not f_list:
+                continue
+            count = len(f_list)
+            if offset == 0:
+                local_start = start_idx
+            else:
+                # For subsequent candidates, choose local_start so that the first
+                # checked index in find_next_valid_in_list is 0 (forward search)
+                # or count - 1 (backward search), regardless of |step|.
+                if step > 0:
+                    # First checked index: (local_start + step) % count == 0
+                    local_start = (count - (step % count)) % count
+                else:
+                    # First checked index: (local_start + step) % count == count - 1
+                    local_start = (count - 1 - step) % count
+            idx = find_next_valid_in_list(f_list, local_start, step)
+            if idx is not None:
+                return p_idx, idx
+        LOGGER.warning("No valid forces found across all candidates for Shift+Home/End search")
+        return None
+
+    def is_shift_pressed(vis_obj) -> bool:
+        if not hasattr(vis_obj, "get_key_modifier"):
+            return False
+        try:
+            modifier = vis_obj.get_key_modifier()
+        except Exception:
+            return False
+        try:
+            shift_flag = o3d.visualization.gui.KeyModifier.SHIFT
+        except Exception:
+            return False
+        return bool(modifier & shift_flag)
 
     def on_page_up(vis_obj):
         state["p_idx"] = (state["p_idx"] + 1) % len(attempts)
@@ -257,13 +306,37 @@ def debug_visualize_dynamics_forces(
         return False
 
     def on_home(vis_obj):
-        state["f_idx"] = find_next_valid(state["f_idx"], 1)
+        if is_shift_pressed(vis_obj):
+            result = find_next_valid_global(state["f_idx"], 1)
+            if result is not None:
+                state["p_idx"], state["f_idx"] = result
+        else:
+            state["f_idx"] = find_next_valid_local(state["f_idx"], 1)
         update_scene()
         return False
 
     def on_end(vis_obj):
-        state["f_idx"] = find_next_valid(state["f_idx"], -1)
+        if is_shift_pressed(vis_obj):
+            result = find_next_valid_global(state["f_idx"], -1)
+            if result is not None:
+                state["p_idx"], state["f_idx"] = result
+        else:
+            state["f_idx"] = find_next_valid_local(state["f_idx"], -1)
         update_scene()
+        return False
+
+    def on_insert(vis_obj):
+        result = find_next_valid_global(state["f_idx"], 1)
+        if result is not None:
+            state["p_idx"], state["f_idx"] = result
+            update_scene()
+        return False
+
+    def on_delete(vis_obj):
+        result = find_next_valid_global(state["f_idx"], -1)
+        if result is not None:
+            state["p_idx"], state["f_idx"] = result
+            update_scene()
         return False
 
     vis.register_key_callback(266, on_page_up)
@@ -272,6 +345,8 @@ def debug_visualize_dynamics_forces(
     vis.register_key_callback(264, on_down)
     vis.register_key_callback(268, on_home)
     vis.register_key_callback(269, on_end)
+    vis.register_key_callback(260, on_insert)
+    vis.register_key_callback(261, on_delete)
 
     update_scene()
     vis.reset_view_point(True)
