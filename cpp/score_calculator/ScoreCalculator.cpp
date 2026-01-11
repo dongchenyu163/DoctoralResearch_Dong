@@ -162,6 +162,15 @@ void ScoreCalculator::setGeoWeights(double w_fin, double w_knf, double w_tbl) no
   }
 }
 
+void ScoreCalculator::setForceWeights(double w_mag, double w_dir, double w_var) noexcept {
+  force_weights_.w_mag = w_mag;
+  force_weights_.w_dir = w_dir;
+  force_weights_.w_var = w_var;
+  if (core_logger_) {
+    SPDLOG_LOGGER_DEBUG(core_logger_, "Force weights updated to {}, {}, {}", w_mag, w_dir, w_var);
+  }
+}
+
 void ScoreCalculator::setGeoFilterRatio(double ratio) noexcept {
   geo_ratio_ = std::clamp(ratio, 0.0, 1.0);
   if (core_logger_) {
@@ -902,6 +911,9 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
         }
         if (total > best_score) {
           best_score = total;
+          RawScores(i, 0) = e_mag;
+          RawScores(i, 1) = e_dir;
+          RawScores(i, 2) = e_var;
         }
       }
       else {
@@ -923,26 +935,32 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
   }
   // Normalize RawScores over all $P$.
   for (int col = 0; col < RawScores.cols(); ++col) {
-    auto& ColumnRef = RawScores.col(col);
+    // auto& ColumnRef = RawScores.col(col);
+    const double* pWeight = &(this->force_weights_.w_mag);
+    pWeight += col;
 
-    const double min_v = ColumnRef.array().isFinite().select(ColumnRef.array(), std::numeric_limits<double>::infinity()).minCoeff();
-    const double max_v = ColumnRef.array().isFinite().select(ColumnRef.array(), -std::numeric_limits<double>::infinity()).maxCoeff();
+    const double min_v = RawScores.col(col).array().isFinite().select(RawScores.col(col).array(), std::numeric_limits<double>::infinity()).minCoeff();
+    const double max_v = RawScores.col(col).array().isFinite().select(RawScores.col(col).array(), -std::numeric_limits<double>::infinity()).maxCoeff();
     const double range = max_v - min_v;
     if (std::isfinite(range) && range >= 1e-9) {
-      ColumnRef.array() = (ColumnRef.array() - min_v) / range;
+      RawScores.col(col).array() = (RawScores.col(col).array() - min_v) / range;
     } else {
       if (range < 1e-9)
       {
         if (max_v < std::numeric_limits<double>::infinity() && min_v > -std::numeric_limits<double>::infinity())
         {
-          ColumnRef.setOnes();
+          RawScores.col(col).setOnes();
         }
       }
       else {
-        ColumnRef.setZero();
+        RawScores.col(col).setZero();
       }
     }
-    ColumnRef *= dyn_weights_[static_cast<std::size_t>(col)];
+    RawScores.col(col) *= *pWeight;
+
+    if (dyn_logger_) {
+      SPDLOG_LOGGER_INFO(dyn_logger_, " Dynamics score column {} normalized with weight {:.4f}; max {:.6f} min {:.6f}", col, *pWeight, max_v, min_v);
+    }
   }
 
   scores = RawScores.rowwise().sum();

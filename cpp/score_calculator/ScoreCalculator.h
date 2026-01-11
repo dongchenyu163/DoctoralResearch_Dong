@@ -38,6 +38,12 @@ class ScoreCalculator {
     double w_tbl = 1.0;
   };
 
+  struct ForceWeights {
+    double w_mag = 1.0;
+    double w_dir = 1.0;
+    double w_var = 1.0;
+  };
+
   ScoreCalculator() = default;
 
   // Store Ω_low points/normals for later scoring. Expect points == normals rows == M.
@@ -51,6 +57,8 @@ class ScoreCalculator {
   void setMaxCandidates(std::int64_t max_candidates) noexcept { max_candidates_ = max_candidates; }
   // Geometry weights (Algorithm 2). Larger w_tbl prioritizes table clearance, etc.
   void setGeoWeights(double w_fin, double w_knf, double w_tbl) noexcept;
+  // Force weights (Algorithm 4).
+  void setForceWeights(double w_mag, double w_dir, double w_var) noexcept;
   // Ratio in (0,1] controlling how many combinations survive Algorithm 2.
   void setGeoFilterRatio(double ratio) noexcept;
   void setGeoRandomSeed(std::uint32_t seed) noexcept { geo_seed_ = seed; }
@@ -133,6 +141,7 @@ class ScoreCalculator {
   std::int64_t max_candidates_ = 0;
   double geo_ratio_ = 1.0;
   GeoWeights geo_weights_;
+  ForceWeights force_weights_;
   std::uint32_t geo_seed_ = 42;
   std::uint32_t dyn_seed_ = 42;
   std::shared_ptr<spdlog::logger> core_logger_;
