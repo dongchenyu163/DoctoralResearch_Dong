@@ -907,11 +907,11 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
       }
     }
 
-    std::sort(attempts.begin(), attempts.end(), [](const ForceAttempt& a, const ForceAttempt& b) {
-      double total_a = std::get<2>(a) + std::get<3>(a) + std::get<4>(a);
-      double total_b = std::get<2>(b) + std::get<3>(b) + std::get<4>(b);
-      return total_a > total_b;
-    });
+    // std::sort(attempts.begin(), attempts.end(), [](const ForceAttempt& a, const ForceAttempt& b) {
+    //   double total_a = std::get<2>(a) + std::get<3>(a) + std::get<4>(a);
+    //   double total_b = std::get<2>(b) + std::get<3>(b) + std::get<4>(b);
+    //   return total_a > total_b;
+    // });
 
     scores(i) = has_valid ? best_score : -std::numeric_limits<double>::infinity();
   }
