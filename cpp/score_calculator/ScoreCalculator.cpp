@@ -920,6 +920,7 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
         // if (dyn_logger_) {
         //   SPDLOG_LOGGER_INFO(dyn_logger_, "Attempt [{},{}] failed: balance_ok={} cone_ok={} residual={:.6f}", i, attempt + 1, balance_ok, cone_ok, residual);
         // }
+        scores(i) = -std::numeric_limits<double>::infinity();
       }
     }
     // if (dyn_logger_) {
