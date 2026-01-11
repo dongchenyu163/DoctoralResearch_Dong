@@ -9,7 +9,9 @@
 
 from __future__ import annotations
 
+import csv
 import logging
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -97,6 +99,12 @@ def run_pipeline(
 
     # Knife wrench (Algorithm 4 pre-step) computed per timestep.
     trajectory_nodes: List[TrajectoryNode] = build_test_trajectory(preprocess_result, config, recorder)
+    step_count = len(trajectory_nodes)
+    candidate_count = int(combination_matrix.shape[0])
+    valid_mask_table = np.zeros((candidate_count, step_count), dtype=np.int8)
+    geo_score_table = np.full((candidate_count, step_count), np.nan, dtype=np.float64)
+    positional_score_table = np.full((candidate_count, step_count), np.nan, dtype=np.float64)
+    dynamic_score_table = np.full((candidate_count, step_count), np.nan, dtype=np.float64)
     timestep_reports: List[Dict[str, object]] = []
     instrumentation = config.instrumentation
     valid_summary: Dict[str, object] | None = None
@@ -130,6 +138,17 @@ def run_pipeline(
             # PREPARE_DATA line 4: recompute Ωg for each timestep using knife plane.
             valid_result = compute_valid_indices(preprocess_result.points_low, config, recorder, knife_instance)
             last_valid_indices = valid_result.indices
+            valid_mask_all = _valid_row_mask(combination_matrix, valid_result.indices)
+            if candidate_count:
+                valid_mask_table[:, step_idx] = valid_mask_all.astype(np.int8)
+                if np.any(valid_mask_all):
+                    geo_scores = _calc_geo_scores(
+                        preprocess_result.points_low,
+                        combination_matrix[valid_mask_all],
+                        table_z=float(config.environment.get("table_z", 0.0)),
+                        weights=config.weights.get("geo_score", {}),
+                    )
+                    geo_score_table[valid_mask_all, step_idx] = geo_scores
             VALID_LOGGER.info(
                 "Step %d Ωg count=%d thresholds(table>=%.4f knife<=%.4f)",
                 step_idx,
@@ -333,6 +352,8 @@ def run_pipeline(
             if filtered_ids.size:
                 with recorder.section("python/accumulate_scores"):
                     accumulator.accumulate(filtered_ids, pos_combined, dynamics_scores)
+                positional_score_table[filtered_ids, step_idx] = pos_combined
+                dynamic_score_table[filtered_ids, step_idx] = dynamics_scores
 
             step_report["positional_score_mean"] = float(pos_combined.mean()) if pos_combined.size else 0.0
             step_report["dynamic_score_mean"] = float(dynamics_scores.mean()) if dynamics_scores.size else 0.0
@@ -444,6 +465,10 @@ def run_pipeline(
         "manual_selection": manual_selection,
         "timesteps": timestep_reports if instrumentation.emit_per_timestep_report else [],
     }
+    _write_candidate_metric_csv(Path("output/valid_mask.csv"), valid_mask_table, float_format=False)
+    _write_candidate_metric_csv(Path("output/geo_score.csv"), geo_score_table, float_format=True)
+    _write_candidate_metric_csv(Path("output/positional_score.csv"), positional_score_table, float_format=True)
+    _write_candidate_metric_csv(Path("output/dynamic_score.csv"), dynamic_score_table, float_format=True)
     return result_summary
 
 
@@ -503,6 +528,98 @@ def _build_candidate_summary(index: int, accumulator: ScoreAccumulator, preproce
         "score_dynamic": float(accumulator.dynamic_scores[index]),
         "hit_count": int(accumulator.hit_counts[index]),
     }
+
+
+def _calc_geo_scores(
+    points: np.ndarray,
+    candidate_matrix: np.ndarray,
+    *,
+    table_z: float,
+    weights: Dict[str, float],
+) -> np.ndarray:
+    if candidate_matrix.size == 0:
+        return np.zeros((0,), dtype=np.float64)
+    w_fin = float(weights.get("w_fin", 1.0))
+    w_knf = float(weights.get("w_knf", 1.0))
+    w_tbl = float(weights.get("w_tbl", 1.0))
+    knife_position = np.zeros(3, dtype=np.float64)
+    knife_normal = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+
+    row_count = candidate_matrix.shape[0]
+    e_fin = np.zeros(row_count, dtype=np.float64)
+    e_knf = np.zeros(row_count, dtype=np.float64)
+    e_tbl = np.zeros(row_count, dtype=np.float64)
+    for idx, row in enumerate(candidate_matrix):
+        subset = points[row]
+        e_fin[idx] = _min_pairwise_distance(subset)
+        centroid = subset.mean(axis=0) if subset.size else np.zeros(3, dtype=np.float64)
+        e_knf[idx] = _distance_to_plane(centroid, knife_position, knife_normal)
+        if subset.size:
+            e_tbl[idx] = max(float(np.min(subset[:, 2]) - table_z), 0.0)
+
+    _normalize_in_place(e_fin)
+    _normalize_in_place(e_knf)
+    _normalize_in_place(e_tbl)
+    return w_fin * e_fin + w_knf * e_knf + w_tbl * e_tbl
+
+
+def _min_pairwise_distance(points: np.ndarray) -> float:
+    count = points.shape[0]
+    if count < 2:
+        return 0.0
+    if count == 2:
+        return float(np.linalg.norm(points[1] - points[0]))
+    min_dist = np.inf
+    for idx in range(count - 1):
+        diffs = points[idx + 1 :] - points[idx]
+        dists = np.linalg.norm(diffs, axis=1)
+        if dists.size:
+            min_dist = min(min_dist, float(np.min(dists)))
+    if not np.isfinite(min_dist):
+        return 0.0
+    return float(min_dist)
+
+
+def _distance_to_plane(point: np.ndarray, plane_point: np.ndarray, plane_normal: np.ndarray) -> float:
+    norm = float(np.linalg.norm(plane_normal))
+    if norm < 1e-12:
+        return 0.0
+    return float(abs(np.dot(point - plane_point, plane_normal) / norm))
+
+
+def _normalize_in_place(values: np.ndarray) -> None:
+    if values.size == 0:
+        return
+    min_v = float(np.min(values))
+    max_v = float(np.max(values))
+    range_v = max_v - min_v
+    if not np.isfinite(range_v) or range_v < 1e-12:
+        values.fill(0.0)
+        return
+    values[:] = (values - min_v) / range_v
+
+
+def _write_candidate_metric_csv(path: Path, data: np.ndarray, *, float_format: bool) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    step_count = data.shape[1] if data.ndim == 2 else 0
+    header = ["P"] + [f"step_{idx}" for idx in range(step_count)]
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(header)
+        for row_idx in range(data.shape[0]):
+            row = [row_idx]
+            if step_count:
+                if float_format:
+                    row.extend(_format_csv_float(value) for value in data[row_idx])
+                else:
+                    row.extend(int(value) for value in data[row_idx])
+            writer.writerow(row)
+
+
+def _format_csv_float(value: float) -> str:
+    if not np.isfinite(value):
+        return "nan"
+    return f"{float(value):.6f}"
 
 
 def _flatten_contact_faces(faces: List[np.ndarray]) -> np.ndarray:

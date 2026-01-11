@@ -65,7 +65,7 @@
     "fracture_step": 0.001,
     "debug_friction_contact_viz": false,
     "force_generation_attempts": 150,
-    "force_generation_seed": 43,
+    "force_generation_seed": 44,
     "force_sample_range": {
       "force_min": 10,
       "force_max": 60.0,
