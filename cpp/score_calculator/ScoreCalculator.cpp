@@ -1,5 +1,7 @@
 #include "ScoreCalculator.h"
 
+#include <Eigen/src/Core/Matrix.h>
+#include <Eigen/src/Core/util/Constants.h>
 #include <cmath>
 #include <filesystem>
 #include <numeric>
@@ -748,6 +750,8 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
 
   std::cout << "Center: [" << center.transpose() << "]" << std::endl;
 
+  Eigen::MatrixX3d RawScores(rows, 3);
+  RawScores.setZero();
   // 遍历每个候选抓取配置（每行代表一组接触点）
   for (Eigen::Index i = 0; i < rows; ++i) {
     if (dyn_logger_ && (i % 50 == 0 || i + 1 == rows)) {
@@ -915,8 +919,34 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     //   return total_a > total_b;
     // });
 
-    scores(i) = has_valid ? best_score : -std::numeric_limits<double>::infinity();
+    // scores(i) = has_valid ? best_score : -std::numeric_limits<double>::infinity();
   }
+  // Normalize RawScores over all $P$.
+  for (int col = 0; col < RawScores.cols(); ++col) {
+    auto& ColumnRef = RawScores.col(col);
+
+    const double min_v = ColumnRef.array().isFinite().select(ColumnRef.array(), std::numeric_limits<double>::infinity()).minCoeff();
+    const double max_v = ColumnRef.array().isFinite().select(ColumnRef.array(), -std::numeric_limits<double>::infinity()).maxCoeff();
+    const double range = max_v - min_v;
+    if (std::isfinite(range) && range >= 1e-9) {
+      ColumnRef.array() = (ColumnRef.array() - min_v) / range;
+    } else {
+      if (range < 1e-9)
+      {
+        if (max_v < std::numeric_limits<double>::infinity() && min_v > -std::numeric_limits<double>::infinity())
+        {
+          ColumnRef.setOnes();
+        }
+      }
+      else {
+        ColumnRef.setZero();
+      }
+    }
+    ColumnRef *= dyn_weights_[static_cast<std::size_t>(col)];
+  }
+
+  scores = RawScores.rowwise().sum();
+
   
   if (dyn_logger_) {
     SPDLOG_LOGGER_DEBUG(dyn_logger_, "Dynamics scoring complete");
