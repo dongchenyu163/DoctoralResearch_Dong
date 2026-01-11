@@ -4,7 +4,7 @@
     "point_cloud_path": "/home/cookteam/Workspace/cookteam/PointClouds/ICRA2024/2023_02_28_22_35_40_720564/FoodShapeProcess_NoModel_SmoothedPC.pcd",
     "point_cloud_path2": "/home/cookteam/Workspace/CPP_Program/python_force_calc_2026/tests/points.pcd",
     "synthetic_point_count": 512,
-    "downsample_num": 600,
+    "downsample_num": 300,
     "normal_estimation_radius": 0.01,
     "align_normals_to_center": true,
     "normal_center_direction": "inward",
@@ -68,8 +68,8 @@
     "force_generation_seed": 43,
     "force_sample_range": {
       "force_min": 10,
-      "force_max": 30.0,
-      "cone_angle_max_deg": 20.0
+      "force_max": 60.0,
+      "cone_angle_max_deg": 40.0
     },
     "friction_mesh": {
       "sample_count": 5000,
@@ -92,7 +92,7 @@
     "finger_count": 2,
     "table_clearance": 0.002,
     "knife_clearance": 0.002,
-    "max_geo_candidates": 2048,
+    "max_geo_candidates": 204800,
     "debug_valid_indices_viz": false,
     "debug_geo_filter_viz": false,
     "debug_geo_filter_k": 24,
