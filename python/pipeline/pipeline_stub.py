@@ -324,6 +324,20 @@ def run_pipeline(
             positional_scores = geo_filter.calc_positional_scores(filtered_candidates, knife_position, knife_normal)
             positional_distances = geo_filter.calc_positional_distances(filtered_candidates, knife_position, knife_normal)
             pos_combined = w_pdir * positional_scores + w_pdis * positional_distances
+            if pos_combined.size:
+                max_pos = float(pos_combined.max())
+                min_pos = float(pos_combined.min())
+                max_expected = w_pdir + w_pdis
+                if max_pos > max_expected + 1e-6 or min_pos < -1e-6:
+                    SCORES_LOGGER.warning(
+                        "Step %d pos_combined out of expected range [0, %.3f]: min=%.6f max=%.6f w_pdir=%.3f w_pdis=%.3f",
+                        step_idx,
+                        max_expected,
+                        min_pos,
+                        max_pos,
+                        w_pdir,
+                        w_pdis,
+                    )
             # Algorithm 4: dynamics score based on wrench equilibrium.
             dynamics_scores = compute_dynamics_scores(geo_filter, filtered_candidates, wrench, food_center, config)
             debug_visualize_dynamics_f_init_forces(
@@ -407,8 +421,7 @@ def run_pipeline(
             "plane_tolerance": valid_result.plane_tolerance,
         }
 
-    # best_idx = accumulator.best_candidate_index()
-    best_idx = accumulator.top_candidates(100)[50]
+    best_idx = accumulator.best_candidate_index()
     best_summary = (
         _build_candidate_summary(best_idx, accumulator, preprocess_result) if best_idx is not None else None
     )
@@ -425,7 +438,7 @@ def run_pipeline(
             manual_valid.indices,
         )
     if bool(config.search.get("debug_best_candidate_viz", False)):
-        debug_best_k = int(config.search.get("debug_best_candidate_k", 5))
+        debug_best_k = min(int(config.search.get("debug_best_candidate_k", 5)), accumulator.active_mask.sum())
         top_ids_for_viz = accumulator.top_candidates(max(debug_best_k, 1))
         _show_best_candidate_grasp(
             preprocess_result.points_low,
@@ -471,12 +484,18 @@ def run_pipeline(
         final_normals = best_summary.get("normals", [])
 
     status_ok = bool(best_summary) or manual_selection is not None
+    omega_g_count = 0
+    if last_valid_indices is not None:
+        omega_g_count = int(last_valid_indices.size)
+    elif valid_summary is not None:
+        omega_g_count = int(valid_summary.get("count", 0))
     result_summary = {
         "manual_select_result": bool(config.manual_select_result),
         "status": "ok" if status_ok else "no_candidates",
         "message": "Pipeline executed with integrated accumulation.",
         "dataset": dataset_info,
         "preprocess": preprocess_summary,
+        "omega_g_count": omega_g_count,
         "valid_indices": valid_summary,
         "combinations": combinations_summary,
         "contact_surface": last_contact_metadata,
