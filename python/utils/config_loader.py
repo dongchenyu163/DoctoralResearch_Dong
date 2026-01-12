@@ -123,7 +123,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         },
     },
     "weights": {
-        "geo_score": {"w_fin": 1.0, "w_knf": 4.4, "w_tbl": 6.0},
+        "geo_score": {"w_fin": 1.0, "w_knf": 4.4, "w_tbl": 6.0, "DistancePenality": 6.0, "DistanceLimit": 0.04},
         "pos_score": {"w_pdir": 5.0, "w_pdis": 4.0},
         "force_score": {"w_mag": 2.0, "w_dir": 2.0, "w_var": 1.0},
     },

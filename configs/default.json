@@ -35,7 +35,9 @@
     "geo_score": {
       "w_fin": 1.0,
       "w_knf": 4.4,
-      "w_tbl": 6.0
+      "w_tbl": 6.0,
+      "DistancePenality": 6.0,
+      "DistanceLimit": 0.04
     },
     "pos_score": {
       "w_pdir": 5.0,

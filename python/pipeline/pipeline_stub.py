@@ -565,6 +565,8 @@ def _calc_geo_scores(
     w_fin = float(weights.get("w_fin", 1.0))
     w_knf = float(weights.get("w_knf", 1.0))
     w_tbl = float(weights.get("w_tbl", 1.0))
+    distance_penality = float(weights.get("DistancePenality", 6.0))
+    distance_limit = float(weights.get("DistanceLimit", 0.04))
     knife_position = np.zeros(3, dtype=np.float64)
     knife_normal = np.array([0.0, 0.0, 1.0], dtype=np.float64)
 
@@ -574,7 +576,8 @@ def _calc_geo_scores(
     e_tbl = np.zeros(row_count, dtype=np.float64)
     for idx, row in enumerate(candidate_matrix):
         subset = points[row]
-        e_fin[idx] = _min_pairwise_distance(subset)
+        min_distance = _min_pairwise_distance(subset)
+        e_fin[idx] = _distance_penalty(min_distance, distance_penality, distance_limit)
         centroid = subset.mean(axis=0) if subset.size else np.zeros(3, dtype=np.float64)
         e_knf[idx] = _distance_to_plane(centroid, knife_position, knife_normal)
         if subset.size:
@@ -601,6 +604,20 @@ def _min_pairwise_distance(points: np.ndarray) -> float:
     if not np.isfinite(min_dist):
         return 0.0
     return float(min_dist)
+
+
+def _distance_penalty(distance: float, distance_penality: float, distance_limit: float) -> float:
+    if not np.isfinite(distance) or not np.isfinite(distance_penality) or not np.isfinite(distance_limit):
+        return 0.0
+    if distance_limit <= 0.0:
+        return 0.0
+    if distance <= distance_limit:
+        denom = np.expm1(distance_penality)
+        if abs(denom) < 1e-12:
+            return 0.0
+        numerator = np.expm1(distance_penality * distance / distance_limit)
+        return float(numerator / denom)
+    return 1.0
 
 
 def _distance_to_plane(point: np.ndarray, plane_point: np.ndarray, plane_normal: np.ndarray) -> float:

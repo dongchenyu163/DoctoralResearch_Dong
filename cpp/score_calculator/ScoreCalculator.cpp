@@ -162,6 +162,18 @@ void ScoreCalculator::setGeoWeights(double w_fin, double w_knf, double w_tbl) no
   }
 }
 
+void ScoreCalculator::setFinDistanceParams(double distance_penality, double distance_limit) noexcept {
+  fin_distance_penality_ = distance_penality;
+  fin_distance_limit_ = distance_limit;
+  if (core_logger_) {
+    SPDLOG_LOGGER_DEBUG(
+        core_logger_,
+        "Finger spacing parameters updated to DistancePenality={} DistanceLimit={}",
+        distance_penality,
+        distance_limit);
+  }
+}
+
 void ScoreCalculator::setForceWeights(double w_mag, double w_dir, double w_var) noexcept {
   force_weights_.w_mag = w_mag;
   force_weights_.w_dir = w_dir;
@@ -292,7 +304,20 @@ double ScoreCalculator::computeMinPairwiseDistance(const PointCloud& subset) con
   if (!std::isfinite(min_dist) || min_dist == std::numeric_limits<double>::max()) {
     return 0.0;
   }
-  return min_dist;
+  const double a = fin_distance_penality_;
+  const double b = fin_distance_limit_;
+  if (!std::isfinite(a) || !std::isfinite(b) || b <= 0.0) {
+    return 0.0;
+  }
+  if (min_dist <= b) {
+    const double denom = std::exp(a) - 1.0;
+    if (std::abs(denom) < 1e-12) {
+      return 0.0;
+    }
+    const double numerator = std::exp(a * min_dist / b) - 1.0;
+    return numerator / denom;
+  }
+  return 1.0;
 }
 
 Eigen::Vector3d ScoreCalculator::computeCentroid(const PointCloud& subset) const {
@@ -483,11 +508,16 @@ ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
     Eigen::Vector3d centroid = computeCentroid(subset);
     const double e_fin = computeMinPairwiseDistance(subset);
     const double e_knf = distanceToPlane(centroid, knife_p, knife_n);
+    double min_knf = std::numeric_limits<double>::max();
     double min_table = std::numeric_limits<double>::max();
     for (const auto& point : subset) {
-      const double dist = static_cast<double>(point.z) - table_z;
-      if (dist < min_table) {
-        min_table = dist;
+      const double dist_fin_tbl = static_cast<double>(point.z) - table_z;
+      const double dist_fin_knf = distanceToPlane(point.getVector3fMap().cast<double>(), knife_p, knife_n);
+      if (dist_fin_knf < min_knf) {
+        min_knf = dist_fin_knf;
+      }
+      if (dist_fin_tbl < min_table) {
+        min_table = dist_fin_tbl;
       }
     }
     const double e_tbl = std::max(min_table, 0.0);

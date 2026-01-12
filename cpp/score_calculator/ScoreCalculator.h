@@ -57,6 +57,7 @@ class ScoreCalculator {
   void setMaxCandidates(std::int64_t max_candidates) noexcept { max_candidates_ = max_candidates; }
   // Geometry weights (Algorithm 2). Larger w_tbl prioritizes table clearance, etc.
   void setGeoWeights(double w_fin, double w_knf, double w_tbl) noexcept;
+  void setFinDistanceParams(double distance_penality, double distance_limit) noexcept;
   // Force weights (Algorithm 4).
   void setForceWeights(double w_mag, double w_dir, double w_var) noexcept;
   // Ratio in (0,1] controlling how many combinations survive Algorithm 2.
@@ -142,6 +143,8 @@ class ScoreCalculator {
   double geo_ratio_ = 1.0;
   GeoWeights geo_weights_;
   ForceWeights force_weights_;
+  double fin_distance_penality_ = 6.0;
+  double fin_distance_limit_ = 0.04;
   std::uint32_t geo_seed_ = 42;
   std::uint32_t dyn_seed_ = 42;
   std::shared_ptr<spdlog::logger> core_logger_;

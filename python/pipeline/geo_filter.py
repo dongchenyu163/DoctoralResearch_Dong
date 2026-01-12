@@ -40,6 +40,10 @@ class GeoFilterRunner:
             float(geo_weights.get("w_knf", 1.0)),
             float(geo_weights.get("w_tbl", 1.0)),
         )
+        self._calculator.set_fin_distance_params(
+            float(geo_weights.get("DistancePenality", 6.0)),
+            float(geo_weights.get("DistanceLimit", 0.04)),
+        )
         force_weights = config.weights.get("force_score", {})
         self._calculator.set_force_weights(
             float(force_weights.get("w_mag", 1.0)),
