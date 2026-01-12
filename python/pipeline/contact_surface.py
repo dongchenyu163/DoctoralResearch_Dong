@@ -38,8 +38,8 @@ def extract_contact_surface(
     if base_mesh is None:
         LOGGER.error("Base food mesh missing; cannot extract contact surfaces")
         return ContactSurfaceResult(faces=[], metadata={"total_faces": 0.0, "components": 0.0}, mesh=None)
-    with recorder.section("python/contact_surface_total"):
-        with recorder.section("python/mesh_boolean"):
+    with recorder.section("python/alg1/trajectory_loop/prepare_data/contact_surface_total"):
+        with recorder.section("python/alg1/trajectory_loop/prepare_data/mesh_boolean"):
             try:
                 # knife_instance.mesh.fix_normals()
                 intersection = base_mesh.intersection(knife_instance.mesh, engine='blender', check_volume=True, use_exact=True)

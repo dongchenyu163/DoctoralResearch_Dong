@@ -65,7 +65,7 @@ def load_point_cloud(config: Config, recorder: TimingRecorder) -> RawPointCloud:
     path_value = preprocess_cfg.get("point_cloud_path")
     synthetic_count = int(preprocess_cfg.get("synthetic_point_count", 512))
 
-    with recorder.section("python/io"):
+    with recorder.section("python/alg1/initialize/io"):
         if path_value:
             source_path = Path(path_value)
         else:
@@ -77,7 +77,7 @@ def load_point_cloud(config: Config, recorder: TimingRecorder) -> RawPointCloud:
                 points = _load_points_from_file(source_path)
             except Exception as exc:  # pragma: no cover - exercised via fallback branch
                 recorder.emit_event(
-                    "python/io",
+                    "python/alg1/initialize/io",
                     {
                         "level": "warning",
                         "message": f"Failed to load {source_path}: {exc}",
@@ -111,12 +111,12 @@ def preprocess_point_cloud(
     downsample_target = int(preprocess_cfg.get("downsample_num", raw_cloud.points.shape[0]))
     normal_radius = float(preprocess_cfg.get("normal_estimation_radius", 0.01))
 
-    with recorder.section("python/preprocess_total"):
-        with recorder.section("python/high_res_downsample"):
+    with recorder.section("python/alg1/initialize/preprocess_total"):
+        with recorder.section("python/alg1/initialize/high_res_downsample"):
             high_res = _downsample_points(raw_cloud.points, target=0, voxel_size=float(preprocess_cfg.get("high_res_voxel", 0.001)))
-        with recorder.section("python/downsample"):
+        with recorder.section("python/alg1/initialize/downsample"):
             downsampled = _downsample_points(high_res, downsample_target)
-        with recorder.section("python/estimate_normals"):
+        with recorder.section("python/alg1/initialize/estimate_normals"):
             normals = _estimate_normals(
                 downsampled,
                 search_radius=normal_radius,

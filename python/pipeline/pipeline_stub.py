@@ -128,7 +128,7 @@ def run_pipeline(
     if pc_logger and pc_logger.enabled_for("omega_low") and preprocess_result.points_low.size:
         pc_logger.save_point_cloud("omega_low", -1, preprocess_result.points_low)
     log_boxed_heading(LOGGER, "3", "TRAJECTORY LOOP / 多阶段计算")
-    with recorder.section("python/trajectory_loop"):
+    with recorder.section("python/alg1/trajectory_loop"):
         for step_idx, node in enumerate(trajectory_nodes):
             log_boxed_heading(LOGGER, f"3.{step_idx + 1}", f"Step {step_idx} Pose + Ωg 计算")
             knife_position = node.pose[:3, 3]
@@ -245,7 +245,7 @@ def run_pipeline(
                         if mesh is not None:
                             pc_logger.save_mesh(stage_name, step_idx, mesh)
             food_center = _food_center(preprocess_result)
-            with recorder.section("python/wrench_compute"):
+            with recorder.section("python/alg1/trajectory_loop/cal_knife_force"):
                 wrench = compute_wrench(
                     contact_surface,
                     config,
@@ -399,7 +399,7 @@ def run_pipeline(
             )
 
             if filtered_ids.size:
-                with recorder.section("python/accumulate_scores"):
+                with recorder.section("python/alg1/trajectory_loop/accumulate_scores"):
                     accumulator.accumulate(
                         filtered_ids,
                         pos_combined,

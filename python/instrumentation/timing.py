@@ -49,19 +49,33 @@ class TimingRecorder:
             return
         start_perf = time.perf_counter()
         start_iso = _now_iso()
+        start_record = {
+            "type": "timing",
+            "phase": "start",
+            "section": name,
+            "timestamp": start_iso,
+        }
+        if self.enable_detailed:
+            start_record["perf_counter_start"] = start_perf
+        if metadata:
+            start_record["metadata"] = metadata
+        self._write_record(start_record)
         try:
             yield None
         finally:
-            duration_ms = (time.perf_counter() - start_perf) * 1000.0
+            end_perf = time.perf_counter()
+            end_iso = _now_iso()
+            duration_ms = (end_perf - start_perf) * 1000.0
             record = {
                 "type": "timing",
+                "phase": "end",
                 "section": name,
                 "duration_ms": duration_ms,
-                "timestamp": start_iso,
+                "timestamp": end_iso,
             }
             if self.enable_detailed:
                 record["perf_counter_start"] = start_perf
-                record["perf_counter_end"] = start_perf + duration_ms / 1000.0
+                record["perf_counter_end"] = end_perf
             if metadata:
                 record["metadata"] = metadata
             self._write_record(record)

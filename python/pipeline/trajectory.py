@@ -49,7 +49,7 @@ def build_test_trajectory(
         scalar_velocities.extend([scalar_velocities[-1] if scalar_velocities else 0.0] * (offsets.shape[0] - len(scalar_velocities)))
 
     nodes: List[TrajectoryNode] = []
-    with recorder.section("python/trajectory_build"):
+    with recorder.section("python/alg1/initialize/trajectory_build"):
         for offset in offsets:
             pose = np.eye(4, dtype=np.float64)
             pose[:3, 3] = center + offset

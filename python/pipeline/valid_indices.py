@@ -53,14 +53,14 @@ def compute_valid_indices(
     if bool(config.search.get("debug_valid_indices_viz", False)):
         _visualize_valid_indices(points_low, center_plane, penetration_plane)
 
-    with recorder.section("python/compute_valid_indices_total"):
-        with recorder.section("python/valid_filter_table"):
+    with recorder.section("python/alg1/trajectory_loop/prepare_data/compute_valid_indices_total"):
+        with recorder.section("python/alg1/trajectory_loop/prepare_data/valid_filter_table"):
             table_mask = points_low[:, 2] >= table_threshold
-        with recorder.section("python/valid_filter_knife"):
+        with recorder.section("python/alg1/trajectory_loop/prepare_data/valid_filter_knife"):
             knife_mask = points_low[:, 2] <= knife_threshold
-        with recorder.section("python/valid_filter_center_plane"):
+        with recorder.section("python/alg1/trajectory_loop/prepare_data/valid_filter_center_plane"):
             center_mask = _half_space_mask(points_low, center_plane, plane_tolerance)
-        with recorder.section("python/valid_filter_slice_plane"):
+        with recorder.section("python/alg1/trajectory_loop/prepare_data/valid_filter_slice_plane"):
             penetration_mask = _half_space_mask(points_low, penetration_plane, plane_tolerance)
 
     valid_mask = table_mask & knife_mask & ~center_mask & ~penetration_mask

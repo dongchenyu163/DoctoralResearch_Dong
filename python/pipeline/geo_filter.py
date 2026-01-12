@@ -82,7 +82,7 @@ class GeoFilterRunner:
         knife_normal = np.array([0.0, 0.0, 1.0], dtype=np.float64)
         table_z = float(self.config.environment.get("table_z", 0.0))
 
-        with recorder.section("python/geo_filter_call_cpp"):
+        with recorder.section("python/alg1/trajectory_loop/alg2/geo_filter_call_cpp"):
             result = self._calculator.filter_by_geo_score(filtered_candidates, knife_position, knife_normal, table_z)
         return np.asarray(result, dtype=np.int32)
 

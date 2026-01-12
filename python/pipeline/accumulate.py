@@ -34,7 +34,7 @@ def build_all_combinations(point_count: int, finger_count: int, recorder: Timing
     if cached is not None:
         return cached.copy()
 
-    with recorder.section("python/build_P_all"):
+    with recorder.section("python/alg1/initialize/build_P_all"):
         combos = list(itertools.combinations(range(point_count), finger_count))
         matrix = np.array(combos, dtype=np.int32) if combos else np.empty((0, finger_count), dtype=np.int32)
     _COMBINATION_CACHE[cache_key] = matrix
