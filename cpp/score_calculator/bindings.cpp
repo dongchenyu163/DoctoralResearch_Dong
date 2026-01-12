@@ -37,6 +37,13 @@ PYBIND11_MODULE(score_calculator, m) {
           py::arg("knife_normal"),
           py::arg("table_z"),
           R"pbdoc(Returns the filtered candidate matrix.)pbdoc")
+      .def(
+          "calc_geo_scores",
+          &ScoreCalculator::calcGeoScores,
+          py::arg("candidate_indices"),
+          py::arg("knife_position"),
+          py::arg("knife_normal"),
+          py::arg("table_z"))
       .def("last_geo_order", &ScoreCalculator::lastGeoOrder)
       .def(
           "calc_positional_scores",

@@ -70,6 +70,10 @@ class ScoreCalculator {
                                    const Eigen::Vector3d& knife_p,
                                    const Eigen::Vector3d& knife_n,
                                    double table_z) const;
+  Eigen::VectorXd calcGeoScores(const Eigen::Ref<const CandidateMatrix>& candidate_indices,
+                                const Eigen::Vector3d& knife_p,
+                                const Eigen::Vector3d& knife_n,
+                                double table_z) const;
   // Sorted row indices from the most recent GeoFilter call (descending score).
   Eigen::VectorXi lastGeoOrder() const;
 

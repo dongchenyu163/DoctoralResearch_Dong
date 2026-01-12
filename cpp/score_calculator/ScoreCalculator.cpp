@@ -597,6 +597,90 @@ ScoreCalculator::CandidateMatrix ScoreCalculator::filterByGeoScore(
   return output;
 }
 
+Eigen::VectorXd ScoreCalculator::calcGeoScores(
+    const Eigen::Ref<const CandidateMatrix>& candidate_indices,
+    const Eigen::Vector3d& knife_p,
+    const Eigen::Vector3d& knife_n,
+    double table_z) const {
+  const Eigen::Index rows = candidate_indices.rows();
+  if (rows == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
+    return Eigen::VectorXd(0);
+  }
+
+  Eigen::VectorXd scores = Eigen::VectorXd::Constant(rows, -std::numeric_limits<double>::infinity());
+  std::vector<RowScore> row_scores;
+  row_scores.reserve(static_cast<std::size_t>(rows));
+
+  PointCloud subset;
+  subset.reserve(static_cast<std::size_t>(candidate_indices.cols()));
+
+  for (Eigen::Index row = 0; row < rows; ++row) {
+    bool row_valid = true;
+    subset.clear();
+    for (Eigen::Index col = 0; col < candidate_indices.cols(); ++col) {
+      const int idx = candidate_indices(row, col);
+      if (idx < 0 || idx >= static_cast<int>(cloud_->size())) {
+        row_valid = false;
+        break;
+      }
+      subset.push_back(cloud_->points[static_cast<std::size_t>(idx)]);
+    }
+    if (!row_valid) {
+      continue;
+    }
+    subset.width = static_cast<uint32_t>(subset.size());
+    subset.height = 1;
+    subset.is_dense = true;
+    Eigen::Vector3d centroid = computeCentroid(subset);
+    const double e_fin = computeMinPairwiseDistance(subset);
+    const double e_knf = distanceToPlane(centroid, knife_p, knife_n);
+    double min_table = std::numeric_limits<double>::max();
+    for (const auto& point : subset) {
+      const double dist = static_cast<double>(point.z) - table_z;
+      if (dist < min_table) {
+        min_table = dist;
+      }
+    }
+    const double e_tbl = std::max(min_table, 0.0);
+    row_scores.push_back({row, e_fin, e_knf, e_tbl});
+  }
+
+  if (row_scores.empty()) {
+    return scores;
+  }
+
+  const Eigen::Index feature_rows = static_cast<Eigen::Index>(row_scores.size());
+  Eigen::ArrayXd e_fin(feature_rows);
+  Eigen::ArrayXd e_knf(feature_rows);
+  Eigen::ArrayXd e_tbl(feature_rows);
+  for (Eigen::Index i = 0; i < feature_rows; ++i) {
+    e_fin(i) = row_scores[static_cast<std::size_t>(i)].e_fin;
+    e_knf(i) = row_scores[static_cast<std::size_t>(i)].e_knf;
+    e_tbl(i) = row_scores[static_cast<std::size_t>(i)].e_tbl;
+  }
+
+  auto normalize = [](Eigen::ArrayXd& arr) {
+    const double min_v = arr.minCoeff();
+    const double max_v = arr.maxCoeff();
+    const double range = max_v - min_v;
+    if (!std::isfinite(range) || range < 1e-12) {
+      arr.setZero();
+      return;
+    }
+    arr = (arr - min_v) / range;
+  };
+
+  normalize(e_fin);
+  normalize(e_knf);
+  normalize(e_tbl);
+
+  Eigen::ArrayXd total = geo_weights_.w_fin * e_fin + geo_weights_.w_knf * e_knf + geo_weights_.w_tbl * e_tbl;
+  for (Eigen::Index i = 0; i < feature_rows; ++i) {
+    scores(row_scores[static_cast<std::size_t>(i)].row_index) = total(i);
+  }
+  return scores;
+}
+
 Eigen::VectorXi ScoreCalculator::lastGeoOrder() const {
   return last_geo_order_;
 }

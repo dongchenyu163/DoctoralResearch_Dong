@@ -96,6 +96,18 @@ class GeoFilterRunner:
     def last_dynamics_attempts(self):
         return self._calculator.last_dynamics_attempts()
 
+    def calc_geo_scores(
+        self,
+        candidate_matrix: np.ndarray,
+        knife_position: np.ndarray,
+        knife_normal: np.ndarray,
+        table_z: float,
+    ) -> np.ndarray:
+        if candidate_matrix.size == 0:
+            return np.zeros((0,), dtype=np.float64)
+        scores = self._calculator.calc_geo_scores(candidate_matrix, knife_position, knife_normal, table_z)
+        return np.asarray(scores, dtype=np.float64)
+
     def calc_positional_scores(
         self,
         candidate_matrix: np.ndarray,
