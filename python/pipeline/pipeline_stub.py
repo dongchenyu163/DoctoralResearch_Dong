@@ -102,6 +102,7 @@ def run_pipeline(
     step_count = len(trajectory_nodes)
     candidate_count = int(combination_matrix.shape[0])
     valid_mask_table = np.zeros((candidate_count, step_count), dtype=np.int8)
+    global_valid_mask = np.ones(candidate_count, dtype=bool)
     geo_score_table = np.full((candidate_count, step_count), np.nan, dtype=np.float64)
     positional_score_table = np.full((candidate_count, step_count), np.nan, dtype=np.float64)
     dynamic_score_table = np.full((candidate_count, step_count), np.nan, dtype=np.float64)
@@ -140,15 +141,8 @@ def run_pipeline(
             last_valid_indices = valid_result.indices
             valid_mask_all = _valid_row_mask(combination_matrix, valid_result.indices)
             if candidate_count:
-                valid_mask_table[:, step_idx] = valid_mask_all.astype(np.int8)
-                if np.any(valid_mask_all):
-                    geo_scores = _calc_geo_scores(
-                        preprocess_result.points_low,
-                        combination_matrix[valid_mask_all],
-                        table_z=float(config.environment.get("table_z", 0.0)),
-                        weights=config.weights.get("geo_score", {}),
-                    )
-                    geo_score_table[valid_mask_all, step_idx] = geo_scores
+                global_valid_mask &= valid_mask_all
+                valid_mask_table[:, step_idx] = global_valid_mask.astype(np.int8)
             VALID_LOGGER.info(
                 "Step %d Ωg count=%d thresholds(table>=%.4f knife<=%.4f)",
                 step_idx,
@@ -190,6 +184,8 @@ def run_pipeline(
 
             active_ids = accumulator.active_ids()
             if active_ids.size == 0:
+                if candidate_count:
+                    valid_mask_table[:, step_idx] = global_valid_mask.astype(np.int8)
                 break
 
             # Mask out candidates that violate current Ωg.
@@ -201,6 +197,8 @@ def run_pipeline(
             if invalid_ids.size:
                 accumulator.mark_eliminated(invalid_ids, "invalid_indices", step_idx)
                 SCORES_LOGGER.debug("Step %d eliminated %d candidates by Ωg", step_idx, invalid_ids.size)
+                if candidate_count:
+                    global_valid_mask[invalid_ids] = False
 
             step_report = {
                 "timestep": step_idx,
@@ -214,6 +212,8 @@ def run_pipeline(
             }
 
             if valid_candidates.size == 0:
+                if candidate_count:
+                    valid_mask_table[:, step_idx] = global_valid_mask.astype(np.int8)
                 if instrumentation.emit_per_timestep_report:
                     timestep_reports.append(step_report)
                 continue
@@ -293,14 +293,29 @@ def run_pipeline(
                 )
             candidate_lookup = _build_row_lookup(valid_candidates, valid_ids)
             filtered_ids = _rows_to_ids(filtered_candidates, candidate_lookup)
+            if filtered_candidates.size:
+                geo_scores = _calc_geo_scores(
+                    preprocess_result.points_low,
+                    valid_candidates,
+                    table_z=float(config.environment.get("table_z", 0.0)),
+                    weights=config.weights.get("geo_score", {}),
+                )
+                if candidate_count:
+                    geo_scores_full = np.full(candidate_count, np.nan, dtype=np.float64)
+                    geo_scores_full[valid_ids] = geo_scores
+                    geo_score_table[filtered_ids, step_idx] = geo_scores_full[filtered_ids]
 
             eliminated_geo = np.setdiff1d(valid_ids, filtered_ids, assume_unique=True)
             if eliminated_geo.size:
                 accumulator.mark_eliminated(eliminated_geo, "geo_filter", step_idx)
+                if candidate_count:
+                    global_valid_mask[eliminated_geo] = False
 
             step_report["candidate_counts"]["geo_filtered"] = int(filtered_ids.size)
 
             if filtered_candidates.size == 0:
+                if candidate_count:
+                    valid_mask_table[:, step_idx] = global_valid_mask.astype(np.int8)
                 if instrumentation.emit_per_timestep_report:
                     timestep_reports.append(step_report)
                 continue
@@ -334,6 +349,8 @@ def run_pipeline(
                 invalid_ids = filtered_ids[invalid_mask]
                 accumulator.mark_eliminated(invalid_ids, "dynamic_infeasible", step_idx)
                 SCORES_LOGGER.debug("Step %d eliminated %d candidates by dynamics infeasibility", step_idx, invalid_ids.size)
+                if candidate_count:
+                    global_valid_mask[invalid_ids] = False
             valid_mask = ~invalid_mask
             filtered_ids = filtered_ids[valid_mask]
             pos_combined = pos_combined[valid_mask]
@@ -367,6 +384,9 @@ def run_pipeline(
                 step_report["dynamic_score_mean"],
             )
 
+            if candidate_count:
+                valid_mask_table[:, step_idx] = global_valid_mask.astype(np.int8)
+
             if instrumentation.emit_per_timestep_report:
                 timestep_reports.append(step_report)
 
@@ -387,7 +407,8 @@ def run_pipeline(
             "plane_tolerance": valid_result.plane_tolerance,
         }
 
-    best_idx = accumulator.best_candidate_index()
+    # best_idx = accumulator.best_candidate_index()
+    best_idx = accumulator.top_candidates(100)[50]
     best_summary = (
         _build_candidate_summary(best_idx, accumulator, preprocess_result) if best_idx is not None else None
     )
@@ -404,12 +425,14 @@ def run_pipeline(
             manual_valid.indices,
         )
     if bool(config.search.get("debug_best_candidate_viz", False)):
+        debug_best_k = int(config.search.get("debug_best_candidate_k", 5))
+        top_ids_for_viz = accumulator.top_candidates(max(debug_best_k, 1))
         _show_best_candidate_grasp(
             preprocess_result.points_low,
             preprocess_result.normals_low,
             last_valid_indices if last_valid_indices is not None else np.empty((0,), dtype=np.int32),
             accumulator.combination_matrix,
-            best_idx,
+            np.array(top_ids_for_viz),
         )
     if best_summary:
         SCORES_LOGGER.info(
@@ -677,24 +700,27 @@ def _show_best_candidate_grasp(
     normals_low: np.ndarray,
     omega_indices: np.ndarray,
     candidate_matrix: np.ndarray,
-    best_idx: int | None,
+    candidate_ids: np.ndarray,
 ) -> None:
     try:
         import open3d as o3d
     except ImportError:  # pragma: no cover
         SCORES_LOGGER.warning("open3d unavailable; skip best candidate visualization")
         return
-    if best_idx is None:
-        SCORES_LOGGER.warning("No best candidate available for visualization")
+    if candidate_ids.size == 0:
+        SCORES_LOGGER.warning("No candidate ids available for visualization")
         return
-    if candidate_matrix.size == 0 or best_idx < 0 or best_idx >= candidate_matrix.shape[0]:
-        SCORES_LOGGER.warning("Best candidate index out of range for visualization")
+    if candidate_matrix.size == 0:
+        SCORES_LOGGER.warning("Candidate matrix empty; skip visualization")
         return
 
     omega_points = points_low[omega_indices] if omega_indices.size else points_low
-    candidate = candidate_matrix[best_idx]
-    grasp_points = points_low[candidate]
-    normals_local = normals_low[candidate] if normals_low.shape == points_low.shape else np.zeros_like(grasp_points)
+    candidate_ids = np.asarray(candidate_ids, dtype=np.int64)
+    max_index = int(candidate_matrix.shape[0] - 1)
+    candidate_ids = candidate_ids[(candidate_ids >= 0) & (candidate_ids <= max_index)]
+    if candidate_ids.size == 0:
+        SCORES_LOGGER.warning("Candidate ids out of range; skip visualization")
+        return
 
     sphere_radius = 0.002
     normal_length = 0.02
@@ -720,23 +746,58 @@ def _show_best_candidate_grasp(
         arrow.paint_uniform_color(np.asarray(color, dtype=np.float64))
         return arrow
 
-    cloud = o3d.geometry.PointCloud()
-    cloud.points = o3d.utility.Vector3dVector(omega_points.astype(np.float64))
-    cloud.paint_uniform_color([0.7, 0.7, 0.7])
+    def build_geometries(candidate_id: int) -> list:
+        candidate = candidate_matrix[candidate_id]
+        grasp_points = points_low[candidate]
+        normals_local = normals_low[candidate] if normals_low.shape == points_low.shape else np.zeros_like(grasp_points)
+        cloud = o3d.geometry.PointCloud()
+        cloud.points = o3d.utility.Vector3dVector(omega_points.astype(np.float64))
+        cloud.paint_uniform_color([0.7, 0.7, 0.7])
+        geoms = [cloud]
+        for pt in grasp_points:
+            sphere = o3d.geometry.TriangleMesh.create_sphere(radius=sphere_radius)
+            sphere.translate(pt)
+            sphere.paint_uniform_color(np.asarray([0.1, 0.9, 0.1], dtype=np.float64))
+            geoms.append(sphere)
+        for pt, n in zip(grasp_points, normals_local):
+            arrow = make_arrow(pt, n * normal_length, np.asarray([0.1, 0.3, 0.9], dtype=np.float64))
+            if arrow is not None:
+                geoms.append(arrow)
+        return geoms
 
-    geoms = [cloud]
-    for pt in grasp_points:
-        sphere = o3d.geometry.TriangleMesh.create_sphere(radius=sphere_radius)
-        sphere.translate(pt)
-        sphere.paint_uniform_color(np.asarray([0.1, 0.9, 0.1], dtype=np.float64))
-        geoms.append(sphere)
+    vis = o3d.visualization.VisualizerWithKeyCallback()
+    vis.create_window(window_name="Top-K Grasp Candidates", width=1200, height=900)
+    state = {"index": 0}
 
-    for pt, n in zip(grasp_points, normals_local):
-        arrow = make_arrow(pt, n * normal_length, np.asarray([0.1, 0.3, 0.9], dtype=np.float64))
-        if arrow is not None:
-            geoms.append(arrow)
+    def redraw() -> None:
+        view = vis.get_view_control().convert_to_pinhole_camera_parameters()
+        vis.clear_geometries()
+        geoms = build_geometries(int(candidate_ids[state["index"]]))
+        for geom in geoms:
+            vis.add_geometry(geom)
+        vis.get_view_control().convert_from_pinhole_camera_parameters(view, allow_arbitrary=True)
+        SCORES_LOGGER.info(
+            "Top-K grasp view %d/%d candidate=%d",
+            state["index"] + 1,
+            int(candidate_ids.size),
+            int(candidate_ids[state["index"]]),
+        )
 
-    o3d.visualization.draw_geometries(geoms, window_name=f"Best Grasp Candidate {best_idx}")
+    def on_up(_vis) -> bool:
+        state["index"] = (state["index"] - 1) % int(candidate_ids.size)
+        redraw()
+        return False
+
+    def on_down(_vis) -> bool:
+        state["index"] = (state["index"] + 1) % int(candidate_ids.size)
+        redraw()
+        return False
+
+    vis.register_key_callback(265, on_up)
+    vis.register_key_callback(264, on_down)
+    redraw()
+    vis.run()
+    vis.destroy_window()
 
 
 def _manual_select_grasp(
