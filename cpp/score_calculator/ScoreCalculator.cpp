@@ -877,8 +877,9 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
   RawScores.setZero();
   // 遍历每个候选抓取配置（每行代表一组接触点）
   for (Eigen::Index i = 0; i < rows; ++i) {
-    if (dyn_logger_ && (i % 50 == 0 || i + 1 == rows)) {
-      SPDLOG_LOGGER_INFO(dyn_logger_, "Dynamics progress {}/{}", i + 1, rows);
+    if (dyn_logger_ && (i % 100 == 0 || i + 1 == rows)) {
+      std::cout << "Dynamics progress " << (i + 1) << "/" << rows << 0x0A;
+      // SPDLOG_LOGGER_INFO(dyn_logger_, "Dynamics progress {}/{}", i + 1, rows);
     }
     Eigen::VectorXi indices = candidate_indices.row(i);
     
@@ -1048,6 +1049,7 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
 
     // scores(i) = has_valid ? best_score : -std::numeric_limits<double>::infinity();
   }
+  std::cout << std::endl;  // Print segments
   // Normalize RawScores over all $P$.
   for (int col = 0; col < RawScores.cols(); ++col) {
     // auto& ColumnRef = RawScores.col(col);
