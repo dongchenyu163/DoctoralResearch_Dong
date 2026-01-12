@@ -294,11 +294,11 @@ def run_pipeline(
             candidate_lookup = _build_row_lookup(valid_candidates, valid_ids)
             filtered_ids = _rows_to_ids(filtered_candidates, candidate_lookup)
             if filtered_candidates.size:
-                geo_scores = _calc_geo_scores(
-                    preprocess_result.points_low,
+                geo_scores = geo_filter.calc_geo_scores(
                     valid_candidates,
-                    table_z=float(config.environment.get("table_z", 0.0)),
-                    weights=config.weights.get("geo_score", {}),
+                    knife_position,
+                    knife_normal,
+                    float(config.environment.get("table_z", 0.0)),
                 )
                 if candidate_count:
                     geo_scores_full = np.full(candidate_count, np.nan, dtype=np.float64)
