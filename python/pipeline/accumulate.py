@@ -50,6 +50,8 @@ class ScoreAccumulator:
         total_scores: Running Σ(S_pos + S_dyn) per combination.
         positional_scores: Running Σ(S_pos) only, to debug Algorithm 3.
         dynamic_scores: Running Σ(S_dyn) only, to debug Algorithm 4.
+        positional_dir_raw_scores/positional_dis_raw_scores: Unnormalized positional components.
+        dynamic_*_raw_scores: Unnormalized dynamics components (mag/dir/var).
         hit_counts: Number of timesteps the candidate survived until accumulation.
         active_mask: Whether the candidate remains eligible (Algorithm 1 lines 10-12).
         eliminated_step/reason: Bookkeeping for diagnostics.
@@ -59,6 +61,11 @@ class ScoreAccumulator:
     total_scores: np.ndarray = field(init=False)
     positional_scores: np.ndarray = field(init=False)
     dynamic_scores: np.ndarray = field(init=False)
+    positional_dir_raw_scores: np.ndarray = field(init=False)
+    positional_dis_raw_scores: np.ndarray = field(init=False)
+    dynamic_mag_raw_scores: np.ndarray = field(init=False)
+    dynamic_dir_raw_scores: np.ndarray = field(init=False)
+    dynamic_var_raw_scores: np.ndarray = field(init=False)
     hit_counts: np.ndarray = field(init=False)
     active_mask: np.ndarray = field(init=False)
     eliminated_step: np.ndarray = field(init=False)
@@ -72,6 +79,11 @@ class ScoreAccumulator:
         self.total_scores = np.zeros(candidate_count, dtype=np.float64)
         self.positional_scores = np.zeros(candidate_count, dtype=np.float64)
         self.dynamic_scores = np.zeros(candidate_count, dtype=np.float64)
+        self.positional_dir_raw_scores = np.zeros(candidate_count, dtype=np.float64)
+        self.positional_dis_raw_scores = np.zeros(candidate_count, dtype=np.float64)
+        self.dynamic_mag_raw_scores = np.zeros(candidate_count, dtype=np.float64)
+        self.dynamic_dir_raw_scores = np.zeros(candidate_count, dtype=np.float64)
+        self.dynamic_var_raw_scores = np.zeros(candidate_count, dtype=np.float64)
         self.hit_counts = np.zeros(candidate_count, dtype=np.int32)
         self.active_mask = np.ones(candidate_count, dtype=bool)
         self.eliminated_step = np.full(candidate_count, -1, dtype=np.int32)
@@ -111,7 +123,17 @@ class ScoreAccumulator:
         for cid in ids:
             self.eliminated_reason[int(cid)] = reason
 
-    def accumulate(self, candidate_ids: Iterable[int], positional: np.ndarray, dynamic: np.ndarray) -> None:
+    def accumulate(
+        self,
+        candidate_ids: Iterable[int],
+        positional: np.ndarray,
+        dynamic: np.ndarray,
+        positional_dir_raw: np.ndarray | None = None,
+        positional_dis_raw: np.ndarray | None = None,
+        dynamic_mag_raw: np.ndarray | None = None,
+        dynamic_dir_raw: np.ndarray | None = None,
+        dynamic_var_raw: np.ndarray | None = None,
+    ) -> None:
         ids = self._normalize_ids(candidate_ids)
         if ids.size == 0:
             return
@@ -120,6 +142,11 @@ class ScoreAccumulator:
         self.total_scores[ids] += positional + dynamic
         self.positional_scores[ids] += positional
         self.dynamic_scores[ids] += dynamic
+        self._accumulate_component(ids, positional_dir_raw, self.positional_dir_raw_scores, "positional_dir_raw")
+        self._accumulate_component(ids, positional_dis_raw, self.positional_dis_raw_scores, "positional_dis_raw")
+        self._accumulate_component(ids, dynamic_mag_raw, self.dynamic_mag_raw_scores, "dynamic_mag_raw")
+        self._accumulate_component(ids, dynamic_dir_raw, self.dynamic_dir_raw_scores, "dynamic_dir_raw")
+        self._accumulate_component(ids, dynamic_var_raw, self.dynamic_var_raw_scores, "dynamic_var_raw")
         self.hit_counts[ids] += 1
 
     def best_candidate_index(self) -> int | None:
@@ -151,3 +178,16 @@ class ScoreAccumulator:
         if isinstance(candidate_ids, np.ndarray):
             return candidate_ids.astype(np.int64, copy=False)
         return np.fromiter((int(cid) for cid in candidate_ids), dtype=np.int64)
+
+    @staticmethod
+    def _accumulate_component(
+        ids: np.ndarray,
+        component: np.ndarray | None,
+        target: np.ndarray,
+        name: str,
+    ) -> None:
+        if component is None:
+            return
+        if component.shape[0] != ids.size:
+            raise ValueError(f"{name} must align with candidate_ids")
+        target[ids] += component

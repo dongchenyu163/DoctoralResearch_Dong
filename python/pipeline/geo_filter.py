@@ -132,6 +132,22 @@ class GeoFilterRunner:
         scores = self._calculator.calc_positional_distances(candidate_matrix, knife_position, knife_normal)
         return np.asarray(scores, dtype=np.float64)
 
+    def calc_positional_distances_raw(
+        self,
+        candidate_matrix: np.ndarray,
+        knife_position: np.ndarray,
+        knife_normal: np.ndarray,
+    ) -> np.ndarray:
+        """Algorithm 3: raw E_pdis distance term (no normalization)."""
+        if candidate_matrix.size == 0:
+            return np.zeros((0,), dtype=np.float64)
+        scores = self._calculator.calc_positional_distances_raw(candidate_matrix, knife_position, knife_normal)
+        return np.asarray(scores, dtype=np.float64)
+
+    def last_dynamics_raw_scores(self) -> np.ndarray:
+        scores = self._calculator.last_dynamics_raw_scores()
+        return np.asarray(scores, dtype=np.float64)
+
     @property
     def calculator(self):
         return self._calculator

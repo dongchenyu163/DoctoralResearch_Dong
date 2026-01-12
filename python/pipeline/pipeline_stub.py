@@ -105,7 +105,12 @@ def run_pipeline(
     global_valid_mask = np.ones(candidate_count, dtype=bool)
     geo_score_table = np.full((candidate_count, step_count), np.nan, dtype=np.float64)
     positional_score_table = np.full((candidate_count, step_count), np.nan, dtype=np.float64)
+    positional_dir_raw_table = np.full((candidate_count, step_count), np.nan, dtype=np.float64)
+    positional_dis_raw_table = np.full((candidate_count, step_count), np.nan, dtype=np.float64)
     dynamic_score_table = np.full((candidate_count, step_count), np.nan, dtype=np.float64)
+    dynamic_mag_raw_table = np.full((candidate_count, step_count), np.nan, dtype=np.float64)
+    dynamic_dir_raw_table = np.full((candidate_count, step_count), np.nan, dtype=np.float64)
+    dynamic_var_raw_table = np.full((candidate_count, step_count), np.nan, dtype=np.float64)
     timestep_reports: List[Dict[str, object]] = []
     instrumentation = config.instrumentation
     valid_summary: Dict[str, object] | None = None
@@ -323,6 +328,11 @@ def run_pipeline(
             # Algorithm 3: positional scores (direction + lever arm terms).
             positional_scores = geo_filter.calc_positional_scores(filtered_candidates, knife_position, knife_normal)
             positional_distances = geo_filter.calc_positional_distances(filtered_candidates, knife_position, knife_normal)
+            positional_distances_raw = geo_filter.calc_positional_distances_raw(
+                filtered_candidates,
+                knife_position,
+                knife_normal,
+            )
             pos_combined = w_pdir * positional_scores + w_pdis * positional_distances
             if pos_combined.size:
                 max_pos = float(pos_combined.max())
@@ -340,6 +350,11 @@ def run_pipeline(
                     )
             # Algorithm 4: dynamics score based on wrench equilibrium.
             dynamics_scores = compute_dynamics_scores(geo_filter, filtered_candidates, wrench, food_center, config)
+            dynamics_raw = (
+                geo_filter.last_dynamics_raw_scores()
+                if filtered_candidates.size
+                else np.zeros((0, 3), dtype=np.float64)
+            )
             debug_visualize_dynamics_f_init_forces(
                 geo_filter,
                 preprocess_result.points_low,
@@ -368,7 +383,10 @@ def run_pipeline(
             valid_mask = ~invalid_mask
             filtered_ids = filtered_ids[valid_mask]
             pos_combined = pos_combined[valid_mask]
+            positional_scores = positional_scores[valid_mask]
+            positional_distances_raw = positional_distances_raw[valid_mask]
             dynamics_scores = dynamics_scores[valid_mask]
+            dynamics_raw = dynamics_raw[valid_mask]
             SCORES_LOGGER.debug(
                 "Step %d pos(mean=%.4f,min=%.4f,max=%.4f) dyn(mean=%.4f,min=%.4f,max=%.4f)",
                 step_idx,
@@ -382,9 +400,23 @@ def run_pipeline(
 
             if filtered_ids.size:
                 with recorder.section("python/accumulate_scores"):
-                    accumulator.accumulate(filtered_ids, pos_combined, dynamics_scores)
+                    accumulator.accumulate(
+                        filtered_ids,
+                        pos_combined,
+                        dynamics_scores,
+                        positional_dir_raw=positional_scores,
+                        positional_dis_raw=positional_distances_raw,
+                        dynamic_mag_raw=dynamics_raw[:, 0],
+                        dynamic_dir_raw=dynamics_raw[:, 1],
+                        dynamic_var_raw=dynamics_raw[:, 2],
+                    )
                 positional_score_table[filtered_ids, step_idx] = pos_combined
+                positional_dir_raw_table[filtered_ids, step_idx] = positional_scores
+                positional_dis_raw_table[filtered_ids, step_idx] = positional_distances_raw
                 dynamic_score_table[filtered_ids, step_idx] = dynamics_scores
+                dynamic_mag_raw_table[filtered_ids, step_idx] = dynamics_raw[:, 0]
+                dynamic_dir_raw_table[filtered_ids, step_idx] = dynamics_raw[:, 1]
+                dynamic_var_raw_table[filtered_ids, step_idx] = dynamics_raw[:, 2]
 
             step_report["positional_score_mean"] = float(pos_combined.mean()) if pos_combined.size else 0.0
             step_report["dynamic_score_mean"] = float(dynamics_scores.mean()) if dynamics_scores.size else 0.0
@@ -510,7 +542,12 @@ def run_pipeline(
     _write_candidate_metric_csv(Path("output/valid_mask.csv"), valid_mask_table, float_format=False)
     _write_candidate_metric_csv(Path("output/geo_score.csv"), geo_score_table, float_format=True)
     _write_candidate_metric_csv(Path("output/positional_score.csv"), positional_score_table, float_format=True)
+    _write_candidate_metric_csv(Path("output/positional_dir_raw.csv"), positional_dir_raw_table, float_format=True)
+    _write_candidate_metric_csv(Path("output/positional_dis_raw.csv"), positional_dis_raw_table, float_format=True)
     _write_candidate_metric_csv(Path("output/dynamic_score.csv"), dynamic_score_table, float_format=True)
+    _write_candidate_metric_csv(Path("output/dynamic_mag_raw.csv"), dynamic_mag_raw_table, float_format=True)
+    _write_candidate_metric_csv(Path("output/dynamic_dir_raw.csv"), dynamic_dir_raw_table, float_format=True)
+    _write_candidate_metric_csv(Path("output/dynamic_var_raw.csv"), dynamic_var_raw_table, float_format=True)
     return result_summary
 
 
@@ -568,6 +605,11 @@ def _build_candidate_summary(index: int, accumulator: ScoreAccumulator, preproce
         "score_total": float(accumulator.total_scores[index]),
         "score_positional": float(accumulator.positional_scores[index]),
         "score_dynamic": float(accumulator.dynamic_scores[index]),
+        "score_positional_dir_raw": float(accumulator.positional_dir_raw_scores[index]),
+        "score_positional_dis_raw": float(accumulator.positional_dis_raw_scores[index]),
+        "score_dynamic_mag_raw": float(accumulator.dynamic_mag_raw_scores[index]),
+        "score_dynamic_dir_raw": float(accumulator.dynamic_dir_raw_scores[index]),
+        "score_dynamic_var_raw": float(accumulator.dynamic_var_raw_scores[index]),
         "hit_count": int(accumulator.hit_counts[index]),
     }
 

@@ -86,6 +86,10 @@ class ScoreCalculator {
   Eigen::VectorXd calcPositionalDistances(const Eigen::Ref<const CandidateMatrix>& candidate_indices,
                                           const Eigen::Vector3d& knife_p,
                                           const Eigen::Vector3d& knife_n) const;
+  // Algorithm 3: raw E_pdis distance-to-plane term (no normalization).
+  Eigen::VectorXd calcPositionalDistancesRaw(const Eigen::Ref<const CandidateMatrix>& candidate_indices,
+                                             const Eigen::Vector3d& knife_p,
+                                             const Eigen::Vector3d& knife_n) const;
 
   // Algorithm 4: evaluate combined dynamics score per candidate.
   // wrench: 6x1 knife wrench (fx,fy,fz,mx,my,mz).
@@ -122,6 +126,7 @@ class ScoreCalculator {
 
   using ForceAttempt = std::tuple<Eigen::VectorXd, Eigen::VectorXd, double, double, double, bool>;
   const std::vector<std::vector<ForceAttempt>>& lastDynamicsAttempts() const { return last_dyn_attempts_; }
+  const Eigen::MatrixXd& lastDynamicsRawScores() const { return last_dyn_raw_scores_; }
 
   std::int64_t pointCount() const noexcept {
     return cloud_ ? static_cast<std::int64_t>(cloud_->size()) : 0;
@@ -157,4 +162,5 @@ class ScoreCalculator {
   std::shared_ptr<spdlog::logger> dyn_logger_;
   mutable Eigen::VectorXi last_geo_order_;
   mutable std::vector<std::vector<ForceAttempt>> last_dyn_attempts_;
+  mutable Eigen::MatrixXd last_dyn_raw_scores_;
 };

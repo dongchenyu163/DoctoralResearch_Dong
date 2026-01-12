@@ -691,6 +691,7 @@ Eigen::VectorXd ScoreCalculator::calcPositionalScores(
     const Eigen::Vector3d& knife_p,
     const Eigen::Vector3d& knife_n) const {
   if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
+    last_dyn_raw_scores_.resize(0, 3);
     return Eigen::VectorXd(0);
   }
   if (pos_logger_) {
@@ -789,6 +790,41 @@ Eigen::VectorXd ScoreCalculator::calcPositionalDistances(
   return scores;
 }
 
+Eigen::VectorXd ScoreCalculator::calcPositionalDistancesRaw(
+    const Eigen::Ref<const CandidateMatrix>& candidate_indices,
+    const Eigen::Vector3d& knife_p,
+    const Eigen::Vector3d& knife_n) const {
+  if (candidate_indices.rows() == 0 || candidate_indices.cols() == 0 || !cloud_ || cloud_->empty()) {
+    return Eigen::VectorXd(0);
+  }
+  Eigen::VectorXd scores(candidate_indices.rows());
+  PointCloud subset;
+  subset.reserve(static_cast<std::size_t>(candidate_indices.cols()));
+  Eigen::Vector3d normalized_kn = knife_n.normalized();
+  if (!std::isfinite(normalized_kn.norm()) || normalized_kn.norm() < 1e-6) {
+    normalized_kn = Eigen::Vector3d(0.0, 0.0, 1.0);
+  }
+  for (Eigen::Index row = 0; row < candidate_indices.rows(); ++row) {
+    subset.clear();
+    bool row_valid = true;
+    for (Eigen::Index col = 0; col < candidate_indices.cols(); ++col) {
+      const int idx = candidate_indices(row, col);
+      if (idx < 0 || idx >= static_cast<int>(cloud_->size())) {
+        row_valid = false;
+        break;
+      }
+      subset.push_back(cloud_->points[static_cast<std::size_t>(idx)]);
+    }
+    double score = 0.0;
+    if (row_valid && subset.size() >= 1) {
+      Eigen::Vector3d centroid = computeCentroid(subset);
+      score = distanceToPlane(centroid, knife_p, normalized_kn);
+    }
+    scores(row) = score;
+  }
+  return scores;
+}
+
 // Algorithm 4: evaluate dynamics feasibility, residuals, and score terms.
 // 算法4：评估动力学可行性、残差和评分项
 Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
@@ -873,8 +909,10 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
 
   std::cout << "Center: [" << center.transpose() << "]" << std::endl;
 
-  Eigen::MatrixX3d RawScores(rows, 3);
-  RawScores.setZero();
+  Eigen::MatrixXd raw_scores(rows, 3);
+  raw_scores.setConstant(-std::numeric_limits<double>::infinity());
+  Eigen::MatrixXd norm_scores(rows, 3);
+  norm_scores.setZero();
   // 遍历每个候选抓取配置（每行代表一组接触点）
   for (Eigen::Index i = 0; i < rows; ++i) {
     if (dyn_logger_ && (i % 100 == 0 || i + 1 == rows)) {
@@ -909,6 +947,9 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
 
     Eigen::Index contact_count = indices.size();
     double best_score = -std::numeric_limits<double>::infinity();
+    Eigen::Vector3d best_raw(-std::numeric_limits<double>::infinity(),
+                             -std::numeric_limits<double>::infinity(),
+                             -std::numeric_limits<double>::infinity());
     bool has_valid = false;
     auto& attempts = last_dyn_attempts_[static_cast<std::size_t>(i)];
     attempts.clear();
@@ -1028,9 +1069,7 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
         // }
         if (total > best_score) {
           best_score = total;
-          RawScores(i, 0) = e_mag;
-          RawScores(i, 1) = e_dir;
-          RawScores(i, 2) = e_var;
+          best_raw << e_mag, e_dir, e_var;
         }
       }
       else {
@@ -1049,40 +1088,53 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     //   return total_a > total_b;
     // });
 
+    if (has_valid) {
+      raw_scores.row(i) = best_raw.transpose();
+      norm_scores.row(i) = best_raw.transpose();
+    }
     // scores(i) = has_valid ? best_score : -std::numeric_limits<double>::infinity();
   }
   std::cout << std::endl;  // Print segments
   // Normalize RawScores over all $P$.
-  for (int col = 0; col < RawScores.cols(); ++col) {
+  for (int col = 0; col < norm_scores.cols(); ++col) {
     // auto& ColumnRef = RawScores.col(col);
     const double* pWeight = &(this->force_weights_.w_mag);
     pWeight += col;
 
-    const double min_v = RawScores.col(col).array().isFinite().select(RawScores.col(col).array(), std::numeric_limits<double>::infinity()).minCoeff();
-    const double max_v = RawScores.col(col).array().isFinite().select(RawScores.col(col).array(), -std::numeric_limits<double>::infinity()).maxCoeff();
+    const double min_v = norm_scores.col(col)
+                             .array()
+                             .isFinite()
+                             .select(norm_scores.col(col).array(), std::numeric_limits<double>::infinity())
+                             .minCoeff();
+    const double max_v = norm_scores.col(col)
+                             .array()
+                             .isFinite()
+                             .select(norm_scores.col(col).array(), -std::numeric_limits<double>::infinity())
+                             .maxCoeff();
     const double range = max_v - min_v;
     if (std::isfinite(range) && range >= 1e-9) {
-      RawScores.col(col).array() = (RawScores.col(col).array() - min_v) / range;
+      norm_scores.col(col).array() = (norm_scores.col(col).array() - min_v) / range;
     } else {
       if (range < 1e-9)
       {
         if (max_v < std::numeric_limits<double>::infinity() && min_v > -std::numeric_limits<double>::infinity())
         {
-          RawScores.col(col).setOnes();
+          norm_scores.col(col).setOnes();
         }
       }
       else {
-        RawScores.col(col).setZero();
+        norm_scores.col(col).setZero();
       }
     }
-    RawScores.col(col) *= *pWeight;
+    norm_scores.col(col) *= *pWeight;
 
     if (dyn_logger_) {
       SPDLOG_LOGGER_INFO(dyn_logger_, " Dynamics score column {} normalized with weight {:.4f}; max {:.6f} min {:.6f}", col, *pWeight, max_v, min_v);
     }
   }
 
-  scores = RawScores.rowwise().sum();
+  scores = norm_scores.rowwise().sum();
+  last_dyn_raw_scores_ = raw_scores;
 
   
   if (dyn_logger_) {
