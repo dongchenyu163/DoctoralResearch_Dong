@@ -878,7 +878,9 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
   // 遍历每个候选抓取配置（每行代表一组接触点）
   for (Eigen::Index i = 0; i < rows; ++i) {
     if (dyn_logger_ && (i % 100 == 0 || i + 1 == rows)) {
-      std::cout << "Dynamics progress " << (i + 1) << "/" << rows << 0x0A;
+      // DO not print new line to avoid flooding the logs
+      std::cout << "Dynamics progress " << (i + 1) << "/" << rows << "\r" << std::flush;
+      
       // SPDLOG_LOGGER_INFO(dyn_logger_, "Dynamics progress {}/{}", i + 1, rows);
     }
     Eigen::VectorXi indices = candidate_indices.row(i);
