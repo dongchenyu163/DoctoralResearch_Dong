@@ -955,6 +955,8 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     attempts.clear();
     attempts.reserve(static_cast<std::size_t>(max_attempts));
 
+    Eigen::MatrixXd LocalDynScores(max_attempts, 3);
+    LocalDynScores.setConstant(-std::numeric_limits<double>::infinity());
     for (int attempt = 0; attempt < max_attempts; ++attempt) {
       Eigen::VectorXd f_init(3 * contact_count);
 
@@ -1057,6 +1059,10 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
       double total = e_mag + e_dir + e_var;
       attempts.emplace_back(f, f_init, e_mag, e_dir, e_var, balance_ok && cone_ok);
 
+      LocalDynScores(attempt, 0) = e_mag;
+      LocalDynScores(attempt, 1) = e_dir;
+      LocalDynScores(attempt, 2) = e_var;
+
       if (balance_ok && cone_ok) {
         has_valid = true;
         // if (dyn_logger_) {
@@ -1079,6 +1085,56 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
         scores(i) = -std::numeric_limits<double>::infinity();
       }
     }
+    // normalize LocalDynScores, except for -inf rows
+    Eigen::MatrixXd LocalDynScoresNorm = LocalDynScores;
+    for (int col = 0; col < LocalDynScoresNorm.cols(); ++col) {
+      double min_v = std::numeric_limits<double>::infinity();;
+      double max_v = -std::numeric_limits<double>::infinity();;
+      for (int row = 0; row < LocalDynScoresNorm.rows(); ++row) {
+        double val = LocalDynScoresNorm(row, col);
+        if (std::isfinite(val)) {
+          if (val < min_v) {
+            min_v = val;
+          }
+          if (val > max_v) {
+            max_v = val;
+          }
+        }
+      }
+      double range = max_v - min_v;
+      for (int row = 0; row < LocalDynScoresNorm.rows(); ++row) {
+        double val = LocalDynScoresNorm(row, col);
+        if (std::isfinite(val)) {
+          if (std::isfinite(range) && range >= 1e-9) {
+            LocalDynScoresNorm(row, col) = (val - min_v) / range;
+          } else {
+            LocalDynScoresNorm(row, col) = 0.0;
+          }
+        }
+      }
+    }
+    // Apply weights
+    for (int col = 0; col <   LocalDynScoresNorm.cols(); ++col) {
+      const double* pWeight = &(this->force_weights_.w_mag);
+      pWeight += col;
+      LocalDynScoresNorm.col(col) *= *pWeight;
+    }
+    auto LocalScoreSum = LocalDynScoresNorm.rowwise().sum();
+    // Get max LocalScore's index in LocalScoreSum
+    double local_best = -std::numeric_limits<double>::infinity();
+    int local_best_idx = -1;
+    for (int row = 0; row < LocalScoreSum.size(); ++row) {
+      double val = LocalScoreSum(row);
+      if (std::isfinite(val) && val > local_best) {
+        local_best = val;
+        local_best_idx = row;
+      }
+    }
+
+    // scores(i) = local_best_idx >= 0 ? LocalScoreSum(local_best_idx) : -std::numeric_limits<double>::infinity();
+
+
+
     // if (dyn_logger_) {
     //   SPDLOG_LOGGER_INFO(dyn_logger_, "Found [{}] attempts for candidate {}", attempts.size(), i);
     // }
@@ -1091,6 +1147,9 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     if (has_valid) {
       raw_scores.row(i) = best_raw.transpose();
       norm_scores.row(i) = best_raw.transpose();
+
+      raw_scores.row(i) = LocalDynScores.row(local_best_idx);
+      norm_scores.row(i) = LocalDynScores.row(local_best_idx);
     }
     // scores(i) = has_valid ? best_score : -std::numeric_limits<double>::infinity();
   }
