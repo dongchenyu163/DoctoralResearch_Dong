@@ -907,7 +907,8 @@ Eigen::VectorXd ScoreCalculator::calcDynamicsScores(
     // viewer->spin();
     // viewer->close();
 
-  std::cout << "Center: [" << center.transpose() << "]" << std::endl;
+  // std::cout << "Center: [" << center.transpose() << "]" << std::endl;
+  std::cout << "Center: [" << max_attempts << "]" << std::endl;
 
   Eigen::MatrixXd raw_scores(rows, 3);
   raw_scores.setConstant(-std::numeric_limits<double>::infinity());
