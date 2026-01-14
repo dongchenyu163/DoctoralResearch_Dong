@@ -1,10 +1,10 @@
 {
-  "manual_select_result": true,
+  "manual_select_result": false,
   "preprocess": {
     "point_cloud_path": "/home/cookteam/Workspace/cookteam/PointClouds/ICRA2024/2023_02_28_22_35_40_720564/FoodShapeProcess_NoModel_SmoothedPC.pcd",
     "point_cloud_path2": "/home/cookteam/Workspace/CPP_Program/python_force_calc_2026/tests/points.pcd",
     "synthetic_point_count": 512,
-    "downsample_num": 300,
+    "downsample_num": 200,
     "normal_estimation_radius": 0.01,
     "align_normals_to_center": true,
     "normal_center_direction": "inward",
@@ -33,15 +33,15 @@
   },
   "weights": {
     "geo_score": {
-      "w_fin": 1.0,
-      "w_knf": 4.4,
-      "w_tbl": 6.0,
+      "w_fin": 7.0,
+      "w_knf": 1.4,
+      "w_tbl": 2.0,
       "DistancePenality": 6.0,
       "DistanceLimit": 0.04
     },
     "pos_score": {
-      "w_pdir": 5.0,
-      "w_pdis": 4.0
+      "w_pdir": 2.77775,
+      "w_pdis": 2.22222
     },
     "force_score": {
       "w_mag": 2.0,
@@ -66,8 +66,8 @@
     "planar_constraint": true,
     "fracture_step": 0.001,
     "debug_friction_contact_viz": false,
-    "force_generation_attempts": 150,
-    "force_generation_seed": 44,
+    "force_generation_attempts": 1600,
+    "force_generation_seed": 13579,
     "force_sample_range": {
       "force_min": 10,
       "force_max": 60.0,
@@ -85,24 +85,25 @@
     "force_balance_threshold": 0.0001
   },
   "environment": {
-    "table_z": 0.0
+    "table_z": 0.03
   },
   "search": {
-    "geo_filter_ratio": 0.6,
+    "geo_filter_ratio": 0.01,
     "geo_filter_seed": 42,
-    "force_sample_count": 1000,
+    "force_sample_count": -1,
     "finger_count": 2,
     "table_clearance": 0.002,
     "knife_clearance": 0.002,
-    "max_geo_candidates": 204800,
+    "max_geo_candidates": 20480000,
     "debug_valid_indices_viz": false,
     "debug_geo_filter_viz": false,
     "debug_geo_filter_k": 24,
     "debug_geo_filter_seed": 42,
-    "debug_dynamics_force_viz": true,
-    "debug_best_candidate_viz": true,
+    "debug_dynamics_force_viz": false,
+    "debug_best_candidate_viz": false,
     "debug_dynamics_f_init_k": 15,
-    "debug_points_normals_viz": true
+    "debug_points_normals_viz": false,
+    "debug_best_candidate_k": 50
   },
   "trajectory": {
     "offsets": [
